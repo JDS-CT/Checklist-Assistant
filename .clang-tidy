@@ -1,0 +1,15 @@
+---
+Checks: >
+  -*,
+  clang-analyzer-*,
+  -clang-analyzer-cplusplus.NewDeleteLeaks,
+  bugprone-assert-side-effect,
+  bugprone-branch-clone,
+  bugprone-infinite-loop,
+  bugprone-suspicious-memory-comparison,
+  bugprone-suspicious-string-compare,
+  bugprone-use-after-move
+WarningsAsErrors: "*"
+HeaderFilterRegex: "^(src|tests)/"
+FormatStyle: file
+...

@@ -1,0 +1,172 @@
+@import url("https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Manrope:wght@500;700&display=swap");
+
+:root {
+  --font-sans: "Space Grotesk", "Manrope", "Segoe UI", Tahoma, sans-serif;
+  --font-mono: "Cascadia Code", Consolas, monospace;
+
+  --bg: #0b0c14;
+  --bg-deep: #070812;
+  --bg-soft: #14172a;
+  --panel: #0f111f;
+  --panel-strong: #11162a;
+  --panel-glass: rgba(16, 24, 42, 0.82);
+  --panel-glass-strong: rgba(16, 24, 42, 0.92);
+  --border: #1c2140;
+  --border-soft: rgba(255, 255, 255, 0.12);
+  --border-ghost: rgba(255, 255, 255, 0.08);
+  --text: #eef3ff;
+  --text-strong: #f5f7ff;
+  --muted: #a7b4d8;
+  --muted-strong: #c7d3f2;
+
+  --accent: #f0a500;
+  --accent-strong: #f5bf43;
+  --accent-soft: #1f1a2d;
+  --accent-ink: #0b0c14;
+  --accent-cool: #78c6ff;
+  --accent-cool-strong: #5a99ff;
+  --accent-cool-ink: #0a1020;
+
+  --good: #7bd58c;
+  --warn: #f6d36b;
+  --bad: #e57f7f;
+  --info: #8b7bff;
+
+  --shadow: 0 16px 32px rgba(0, 0, 0, 0.4);
+  --shadow-strong: 0 18px 38px rgba(0, 0, 0, 0.55);
+
+  --page-gradient: radial-gradient(circle at 20% 20%, #14172a 0, #0b0c14 60%, #070812 100%);
+  --field-bg: #0d1022;
+  --chip-bg: #171d34;
+  --code-bg: #0b1024;
+  --code-border: #1c2140;
+  --mark-bg: #11152b;
+
+  --table-head-bg: #13162b;
+  --table-section-bg: #13172d;
+  --table-section-header-bg: #0f1326;
+  --table-row-bg: #0b0f24;
+  --table-footer-bg: #0f1326;
+
+  --details-row-bg: #0f1532;
+  --details-panel-bg: #141b3b;
+  --details-panel-border: #3a4678;
+  --details-panel-shadow: 0 0 0 1px rgba(58, 70, 120, 0.35), 0 12px 26px rgba(0, 0, 0, 0.4);
+
+  --instructions-bg: #171f3d;
+  --instructions-border: #3b4674;
+  --instructions-shadow: 0 0 0 1px rgba(59, 70, 116, 0.3), 0 10px 24px rgba(0, 0, 0, 0.4);
+
+  --relationships-bg: #0f152f;
+  --relationships-border: #2f3964;
+
+  --danger-bg: #2b0f14;
+  --danger-border: #5a1c24;
+  --danger-text: #f6d36b;
+
+  --pill-bg: #121426;
+  --pill-border: #1c2140;
+  --pill-text: #a7b4d8;
+
+  --scrollbar-track: #0d1226;
+  --scrollbar-thumb: #2b355a;
+  --scrollbar-thumb-hover: #3a4674;
+}
+
+:root[data-theme="light"] {
+  --bg: #f6f7fb;
+  --bg-deep: #e7ebf5;
+  --bg-soft: #f1f4fa;
+  --panel: #ffffff;
+  --panel-strong: #ffffff;
+  --panel-glass: rgba(255, 255, 255, 0.88);
+  --panel-glass-strong: rgba(255, 255, 255, 0.95);
+  --border: #d4d9e6;
+  --border-soft: rgba(20, 25, 40, 0.12);
+  --border-ghost: rgba(20, 25, 40, 0.08);
+  --text: #1b2235;
+  --text-strong: #111827;
+  --muted: #4c5876;
+  --muted-strong: #3e4a68;
+
+  --shadow: 0 16px 32px rgba(20, 23, 40, 0.12);
+  --shadow-strong: 0 18px 38px rgba(20, 23, 40, 0.18);
+
+  --page-gradient: radial-gradient(circle at 20% 20%, #ffffff 0, #f1f4f9 60%, #e7ebf5 100%);
+  --field-bg: #ffffff;
+  --chip-bg: #f1f4fb;
+  --code-bg: #eef2fa;
+  --code-border: #d8dee9;
+  --mark-bg: #e7ecf7;
+
+  --table-head-bg: #f1f4fb;
+  --table-section-bg: #e7ecf7;
+  --table-section-header-bg: #f4f6fc;
+  --table-row-bg: #ffffff;
+  --table-footer-bg: #f1f4fb;
+
+  --details-row-bg: #eef2ff;
+  --details-panel-bg: #f7f9ff;
+  --details-panel-border: #b9c6e6;
+  --details-panel-shadow: 0 0 0 1px rgba(145, 160, 200, 0.25), 0 10px 24px rgba(20, 23, 40, 0.12);
+
+  --instructions-bg: #fff6e6;
+  --instructions-border: #e0c28b;
+  --instructions-shadow: 0 0 0 1px rgba(180, 150, 100, 0.25), 0 10px 24px rgba(20, 23, 40, 0.12);
+
+  --relationships-bg: #f4f6ff;
+  --relationships-border: #cbd5ee;
+
+  --danger-bg: #ffe9e9;
+  --danger-border: #d85a5a;
+  --danger-text: #9b1b2a;
+
+  --pill-bg: #eef1f8;
+  --pill-border: #d4d9e6;
+  --pill-text: #4c5876;
+
+  --scrollbar-track: #eef2f8;
+  --scrollbar-thumb: #c6cfdf;
+  --scrollbar-thumb-hover: #b3bdd3;
+}
+
+* {
+  box-sizing: border-box;
+  scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
+  scrollbar-width: thin;
+}
+
+body {
+  margin: 0;
+  background: var(--page-gradient);
+  color: var(--text);
+  font-family: var(--font-sans);
+}
+
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+*::-webkit-scrollbar-track {
+  background: var(--scrollbar-track);
+}
+
+*::-webkit-scrollbar-thumb {
+  background: var(--scrollbar-thumb);
+  border-radius: 999px;
+  border: 2px solid var(--scrollbar-track);
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background: var(--scrollbar-thumb-hover);
+}
+
+a {
+  color: var(--accent-strong);
+  text-decoration: none;
+}
+
+code {
+  font-family: var(--font-mono);
+}

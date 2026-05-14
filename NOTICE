@@ -1,0 +1,10 @@
+Checklist Assistant public reference implementation
+
+This repository includes third-party source dependencies with their own license files:
+
+- cpp-httplib: `third_party/cpp-httplib/LICENSE`
+- nlohmann/json: `third_party/nlohmann/LICENSE.MIT`
+- SQLite amalgamation: `third_party/sqlite/sqlite3.c`, `third_party/sqlite/sqlite3.h`, and `third_party/sqlite/LICENSE.md`
+- xxHash: `third_party/xxhash/xxhash.c`, `third_party/xxhash/xxhash.h`, and `third_party/xxhash/LICENSE`
+
+Private checklist packs, customer material, generated release artifacts, and local runtime databases are not part of this public seed.

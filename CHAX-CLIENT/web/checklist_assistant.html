@@ -1,0 +1,460 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Checklist Assistant Prototype 3</title>
+  <link rel="stylesheet" href="theme.css">
+  <style>
+    body {
+      margin: 0;
+      padding: 18px;
+      background: var(--page-gradient);
+    }
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 14px 16px;
+      margin-bottom: 16px;
+      box-shadow: var(--shadow);
+    }
+    .bar { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-bottom: 10px; }
+    .bar-split { justify-content: space-between; }
+    .bar:last-child { margin-bottom: 0; }
+    .utility-bar { display: block; }
+    .utility-bar details { width: 100%; }
+    label { font-size: 13px; color: var(--muted); }
+    input, select, textarea {
+      padding: 8px 10px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: var(--field-bg);
+      color: var(--text);
+      font-family: inherit;
+      font-size: 13px;
+    }
+    textarea { resize: vertical; min-height: 52px; }
+    button {
+      padding: 8px 12px;
+      border: none;
+      border-radius: 10px;
+      background: var(--accent);
+      color: var(--accent-ink);
+      cursor: pointer;
+      font-weight: 700;
+      letter-spacing: 0.01em;
+    }
+    button.secondary { background: var(--accent-soft); color: var(--text); border: 1px solid var(--border); }
+    button.ghost { background: transparent; border: 1px dashed var(--border); color: var(--muted); }
+    button:disabled { opacity: 0.5; cursor: not-allowed; }
+    table { width: 100%; border-collapse: collapse; color: var(--text); font-size: 13px; }
+    th, td { padding: 10px 8px; border-bottom: 1px solid var(--border); vertical-align: top; text-align: left; }
+    th { background: var(--table-head-bg); }
+    .note { color: var(--muted); font-size: 12px; }
+    .section-row td { background: var(--table-section-bg); font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; }
+    .section-header td { background: var(--table-section-header-bg); }
+    .data-row td { background: var(--table-row-bg); }
+    .details-row td { background: var(--details-row-bg); }
+    .add-row-row td, .section-footer td { background: var(--table-footer-bg); text-align: center; }
+    .top-controls { margin-left: auto; display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+    .details-box {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 8px;
+      padding: 10px;
+      background: var(--details-panel-bg);
+      border: 1px solid var(--details-panel-border);
+      border-radius: 12px;
+      box-shadow: var(--details-panel-shadow);
+    }
+    .chip {
+      display: inline-block;
+      padding: 4px 8px;
+      border-radius: 10px;
+      background: var(--chip-bg);
+      border: 1px solid var(--border-soft);
+      color: var(--muted-strong);
+      font-size: 12px;
+      font-weight: 600;
+    }
+    .code-block {
+      background: var(--code-bg);
+      border: 1px solid var(--code-border);
+      border-radius: 8px;
+      padding: 6px 8px;
+      font-family: var(--font-mono);
+      font-size: 12px;
+      color: var(--text);
+      overflow-x: auto;
+    }
+    .markdown { background: var(--code-bg); border: 1px solid var(--code-border); border-radius: 8px; padding: 8px; white-space: pre-wrap; color: var(--text); }
+    .markdown.rendered { white-space: normal; }
+    .markdown.rendered p { margin: 4px 0; }
+    .markdown.rendered ul, .markdown.rendered ol { margin: 4px 0; padding-left: 18px; }
+    .markdown.rendered h1, .markdown.rendered h2, .markdown.rendered h3,
+    .markdown.rendered h4, .markdown.rendered h5, .markdown.rendered h6 {
+      margin: 6px 0 4px;
+      font-weight: 700;
+      letter-spacing: 0.01em;
+    }
+    .markdown.rendered h1 { font-size: 18px; }
+    .markdown.rendered h2 { font-size: 16px; }
+    .markdown.rendered h3 { font-size: 15px; }
+    .markdown.rendered h4 { font-size: 14px; }
+    .markdown.rendered h5 { font-size: 13px; }
+    .markdown.rendered h6 { font-size: 12px; text-transform: uppercase; color: var(--muted); }
+    .markdown.rendered blockquote {
+      margin: 6px 0;
+      padding: 6px 10px;
+      border-left: 3px solid var(--accent);
+      background: var(--panel);
+      color: var(--muted);
+      border-radius: 6px;
+    }
+    .tour-bubble {
+      position: fixed;
+      z-index: 20;
+      max-width: 320px;
+      padding: 12px 14px;
+      border: 1px solid var(--border-soft);
+      border-radius: 8px;
+      background: var(--panel-glass-strong);
+      box-shadow: var(--shadow-strong);
+      color: var(--text-strong);
+      font-size: 13px;
+      line-height: 1.45;
+    }
+    .tour-bubble::before {
+      content: "";
+      position: absolute;
+      top: -9px;
+      left: 28px;
+      border-left: 9px solid transparent;
+      border-right: 9px solid transparent;
+      border-bottom: 9px solid var(--border-soft);
+    }
+    .tour-bubble::after {
+      content: "";
+      position: absolute;
+      top: -8px;
+      left: 29px;
+      border-left: 8px solid transparent;
+      border-right: 8px solid transparent;
+      border-bottom: 8px solid var(--panel-glass-strong);
+    }
+    .tour-target {
+      outline: 2px solid var(--accent);
+      outline-offset: 3px;
+    }
+    .markdown.rendered img {
+      display: block;
+      max-width: 100%;
+      height: auto;
+      margin: 6px 0;
+      border-radius: 8px;
+      box-shadow: 0 6px 18px rgba(0, 0, 0, 0.25);
+    }
+    .markdown.rendered video {
+      display: block;
+      max-width: 100%;
+      margin: 6px 0;
+      border-radius: 8px;
+      box-shadow: 0 6px 18px rgba(0, 0, 0, 0.25);
+    }
+    .markdown.rendered code { background: var(--mark-bg); padding: 2px 4px; border-radius: 4px; }
+    .radio-group { display: inline-flex; gap: 6px; flex-wrap: wrap; }
+    .radio-group label { display: inline-flex; gap: 4px; align-items: center; }
+    .ind-cell { text-align: center; width: 70px; }
+    .state-cell { text-align: center; width: 90px; }
+    .row-cell-input { width: 100%; box-sizing: border-box; }
+    .row-cell-wrap {
+      width: 100%;
+      min-height: 36px;
+      line-height: 1.25;
+      resize: vertical;
+      box-sizing: border-box;
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+    }
+    .result-cell {
+      display: flex;
+      gap: 6px;
+      align-items: flex-start;
+    }
+    .result-cell .result-verify-ind {
+      margin-top: 9px;
+      flex: 0 0 auto;
+    }
+    .state-pending { color: var(--warn); }
+    .state-unsaved { color: var(--bad); }
+    .state-saved { color: var(--good); }
+    .draft-note { margin-top: 6px; font-size: 11px; color: var(--muted); }
+    .title { font-size: 18px; font-weight: 700; letter-spacing: 0.02em; }
+    .mode-hint { font-size: 12px; color: var(--muted); margin-left: auto; }
+    .pill { display: inline-flex; align-items: center; gap: 6px; padding: 6px 10px; border-radius: 10px; background: var(--pill-bg); border: 1px solid var(--pill-border); font-size: 12px; color: var(--pill-text); }
+    body[data-view-only="1"] .edit-only { display: none; }
+    a { color: var(--accent-strong); text-decoration: none; }
+    .session-toggle { position: fixed; top: 16px; right: 16px; z-index: 20; }
+    .session-panel { position: fixed; top: 56px; right: 16px; width: 320px; background: var(--panel-glass-strong); border: 1px solid var(--border-soft); border-radius: 12px; box-shadow: 0 12px 24px rgba(0,0,0,0.4); padding: 12px; display: none; z-index: 19; }
+    .session-panel h4 { margin: 0 0 6px 0; }
+    .session-panel label { font-size: 12px; color: var(--muted); display: block; margin-top: 6px; }
+    .session-panel input, .session-panel select { width: 100%; margin-top: 4px; }
+    .session-panel .note { display: block; margin-top: 4px; }
+    .session-row { display: flex; gap: 6px; align-items: center; margin-top: 6px; }
+    .full-span { grid-column: 1 / -1; }
+    .instructions-box {
+      background: var(--instructions-bg);
+      border: 1px solid var(--instructions-border);
+      border-radius: 10px;
+      padding: 8px;
+      box-shadow: var(--instructions-shadow);
+    }
+    .instructions-box textarea { width: 100%; display: block; background: var(--field-bg); }
+    .relationships-box { background: var(--relationships-bg); border: 1px dashed var(--relationships-border); border-radius: 10px; padding: 8px; }
+    .relationships-box > .chip {
+      background: var(--panel);
+      border-color: var(--relationships-border);
+      color: var(--muted-strong);
+    }
+    .relationships-box .note { color: var(--muted-strong); }
+    .relationships-box .note.note-soft { color: var(--muted); }
+    .relationships-box .note .note-key { color: var(--accent-cool-strong); font-weight: 700; }
+    .relationships-box .rel-arrow {
+      display: inline-block;
+      font-weight: 700;
+      margin: 0 4px;
+    }
+    .relationships-box .rel-arrow-outgoing { color: var(--muted-strong); }
+    .relationships-box .rel-arrow-incoming { color: var(--accent-cool-strong); }
+    .tiny-indicator { display: inline-block; width: 10px; height: 10px; border-radius: 999px; background: #2a3054; border: 1px solid rgba(255,255,255,0.12); }
+    .tiny-indicator.ind-good { background: var(--good); border-color: rgba(123, 213, 140, 0.55); }
+    .tiny-indicator.ind-warn { background: var(--warn); border-color: rgba(246, 211, 107, 0.55); }
+    .tiny-indicator.ind-bad { background: var(--bad); border-color: rgba(229, 127, 127, 0.55); }
+    .tiny-indicator.ind-info { background: #8b7bff; border-color: rgba(139, 123, 255, 0.55); }
+    .tiny-indicator.ind-muted { background: #2a3054; border-color: rgba(255,255,255,0.12); }
+    .prefill-indicator { margin-right: 6px; vertical-align: middle; }
+    .rel-editor { margin-top: 8px; border-top: 1px solid var(--border); padding-top: 8px; }
+    .rel-editor-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+    .rel-editor-row input { min-width: 220px; }
+    .rel-editor-row select { min-width: 140px; }
+    .rel-editor .note { margin-top: 6px; }
+    .copy-btn {
+      padding: 6px 8px;
+      border-radius: 8px;
+      background: var(--accent-soft);
+      border: 1px solid var(--border);
+      color: var(--muted);
+      cursor: pointer;
+      font-size: 12px;
+    }
+    .copy-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+    .links-row { display: inline-flex; gap: 10px; align-items: center; }
+    .template-tag { color: #e57f7f; font-size: 11px; margin-left: 4px; cursor: help; }
+    .template-tag.hidden { display: none; }
+    .danger-btn {
+      padding: 6px 8px;
+      border-radius: 8px;
+      background: var(--danger-bg);
+      border: 1px solid var(--danger-border);
+      color: var(--danger-text);
+      cursor: pointer;
+      font-size: 12px;
+    }
+    .danger-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+  </style>
+</head>
+<body>
+  <div class="panel">
+    <div class="bar bar-split">
+      <div class="title">Checklist Assistant - <span id="variantTag">0.0.1-1.2.4</span></div>
+      <div class="top-controls">
+        <span id="checklistStatus" class="note" title="Checklist status">&#9679;</span>
+        <label>Checklist</label>
+        <select id="checklistSelect" style="width:200px"></select>
+        <button class="copy-btn" id="checklistCopyBtn" type="button" title="Copy checklist id">Copy</button>
+        <button class="danger-btn" id="checklistDeleteBtn" type="button" title="Delete this checklist and all instances">Delete</button>
+        <input id="checklistFilter" placeholder="filter..." style="width:140px">
+      </div>
+    </div>
+    <div class="bar bar-split">
+      <div class="links-row">
+        <span class="pill"><a href="portal_settings.html">Settings</a></span>
+        <span class="pill"><a href="index.html">Home</a></span>
+        <span class="pill"><a href="portal_help.html">Help</a></span>
+      </div>
+      <div class="top-controls">
+        <span id="instanceStatus" class="note" title="Instance status">&#9679;</span>
+        <label>Instance</label>
+        <select id="instanceSelect" style="width:200px"></select>
+        <button class="copy-btn" id="instanceCopyBtn" type="button" title="Copy instance id">Copy</button>
+        <button class="danger-btn" id="instanceDeleteBtn" type="button" title="Delete this instance">Delete</button>
+        <input id="instanceFilter" placeholder="create or search instances..." title="Search existing instances by ID or principal. If no match exists, you will be prompted to create the instance." style="width:240px">
+      </div>
+    </div>
+    <div class="bar">
+      <label>Mode</label>
+      <select id="modeSelect">
+        <option value="guest">Guest (view only)</option>
+        <option value="user">User</option>
+        <option value="service" selected>Service</option>
+      </select>
+      <label class="edit-toggle"><input type="checkbox" id="editToggle" checked> Allow edits</label>
+      <label><input type="checkbox" id="showNaRowsToggle"> Show NA rows</label>
+      <label><input type="checkbox" id="wrapRowTextToggle"> Wrap row text</label>
+      <span class="mode-hint" id="modeHint"></span>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="bar utility-bar">
+      <details>
+        <summary>Markdown workspace</summary>
+        <div class="bar" style="margin-top:8px;">
+          <span id="mdWorkspaceStatus" class="note" title="Markdown workspace" style="color: var(--warn);">●</span>
+          <label>Templates</label>
+          <select id="mdWorkspaceSelect" style="width:260px"></select>
+          <button class="secondary" id="refreshMdWorkspaceBtn" type="button" title="Refresh the templates list">Refresh</button>
+          <button class="secondary" id="openMdWorkspaceDirBtn" type="button" title="Open the templates folder">Open folder</button>
+          <button class="secondary" id="copyMdWorkspaceDirBtn" type="button" title="Copy the templates folder path">Copy path</button>
+        </div>
+        <div class="bar" style="margin-top:8px; flex-wrap:wrap;">
+          <button id="importMdWorkspaceBtn" type="button" title="Import the selected markdown file into the database">Import selected</button>
+          <label title="When checked, apply status/result/comment rows from the file into the selected instance.">
+            <input type="checkbox" id="mdWorkspaceApplyData"> Load data
+          </label>
+          <label title="When checked, delete all rows for the target instance before importing.">
+            <input type="checkbox" id="mdWorkspaceReplaceInstance" checked> Replace instance
+          </label>
+        </div>
+        <div class="bar" style="margin-top:8px; flex-wrap:wrap;">
+          <button class="secondary" id="exportMdWorkspaceBtn" type="button" title="Export the selected checklist to the checklists pack">Export current</button>
+          <label title="When checked, export status/result/comment from the selected instance instead of exporting the template/root instance.">
+            <input type="checkbox" id="mdWorkspaceExportIncludeData"> Include data
+          </label>
+          <label>Pack</label>
+          <input id="mdWorkspaceExportPack" placeholder="defaults to chax" style="width:180px">
+        </div>
+        <div class="code-block" id="mdWorkspaceInfo" style="font-size:11px; padding:6px;"></div>
+        <span class="note">Author Markdown in `checklists/&lt;pack&gt;/&lt;checklist&gt;/checklist.md` and import/export via `/api/v1/workspace/markdown/*`.</span>
+      </details>
+    </div>
+    <div class="bar utility-bar">
+      <details>
+        <summary>Import JSONL</summary>
+        <div class="bar" style="margin-top:8px; flex-wrap:wrap;">
+          <span id="jsonlImportStatus" class="note" title="JSONL import" style="color: var(--warn);">●</span>
+          <label>JSONL file</label>
+          <input id="jsonlImportFile" type="file" accept=".jsonl,.ndjson,.txt">
+          <button id="importJsonlBtn" type="button" title="Import JSONL data into the selected instance">Import JSONL</button>
+        </div>
+        <div class="code-block" id="jsonlImportInfo" style="font-size:11px; padding:6px;"></div>
+        <span class="note">JSONL import updates existing rows by slug_id/address_id and can insert missing rows after confirmation.</span>
+      </details>
+    </div>
+    <div class="bar utility-bar">
+      <details>
+        <summary>Scripts</summary>
+        <div class="bar" style="margin-top:8px; flex-wrap:wrap;">
+          <span id="scriptsStatus" class="note" title="Checklist scripts" style="color: var(--warn);">&#9679;</span>
+          <label>Scripts</label>
+          <select id="scriptsSelect" style="width:300px"></select>
+          <button class="secondary" id="refreshScriptsBtn" type="button" title="Refresh checklist-local scripts">Refresh</button>
+          <button class="secondary" id="openScriptsDirBtn" type="button" title="Open the scripts folder">Open folder</button>
+          <button class="secondary" id="copyScriptsDirBtn" type="button" title="Copy the scripts folder path">Copy path</button>
+          <button id="runScriptBtn" type="button" title="Start the selected script">Start</button>
+          <button class="secondary" id="stopScriptBtn" type="button" title="Stop the selected script">Stop</button>
+        </div>
+        <div class="code-block" id="scriptsInfo" style="font-size:11px; padding:6px;"></div>
+        <div class="code-block" id="scriptsRunInfo" style="font-size:11px; padding:6px;"></div>
+        <span class="note">Runs scripts from `checklists/&lt;pack&gt;/&lt;checklist&gt;/scripts` via `/api/v1/workspace/scripts` endpoints. Runtime stdout/stderr logs are written under `checklists/&lt;pack&gt;/&lt;checklist&gt;/logs`. `Start` uses manifest `start_args`; `Stop` uses `stop_args` when provided.</span>
+      </details>
+    </div>
+    <div class="bar utility-bar">
+      <details>
+        <summary>Report generation</summary>
+        <div class="bar" style="margin-top:8px; flex-wrap:wrap; gap:8px;">
+          <button id="generateReportBtn" type="button" title="Generate LaTeX report for checklist+instance">Generate LaTeX</button>
+          <button id="generateHtmlReportBtn" type="button" title="Generate HTML report for checklist+instance">Generate HTML</button>
+          <button class="secondary" id="openReportDirBtn" type="button" title="Open the last generated report folder">Open folder</button>
+        </div>
+        <div class="bar" style="margin-top:8px; flex-wrap:wrap; gap:8px;">
+          <label>JSONL mode</label>
+          <select id="reportJsonlMode">
+            <option value="report" selected>Report (context + results)</option>
+            <option value="minimal">Minimal (address + results only)</option>
+            <option value="full">Full (includes instructions + relationships)</option>
+          </select>
+          <label title="Include entity_principal and instance_principal in the JSONL sidecar.">
+            <input type="checkbox" id="reportJsonlIncludePrincipals"> Include principals
+          </label>
+          <label title="When checked, JSONL uses slug_id instead of address_id for instance-agnostic exports.">
+            <input type="checkbox" id="reportJsonlSlugOnly"> Slug-only IDs
+          </label>
+        </div>
+        <div class="note">Uses the selected checklist/instance above. Writes to checklists/&lt;pack&gt;/&lt;checklist&gt;/reports/&lt;instance_id&gt;_&lt;timestamp&gt;/&lt;checklist&gt;.(tex|html) on the server. Templates are optional for both formats.</div>
+        <div class="note">JSONL sidecar uses address_id for row identity unless slug-only IDs are enabled; instance_id is omitted.</div>
+        <div class="code-block" id="reportPath" style="font-size:11px; padding:6px;"></div>
+        <div class="code-block" id="reportDir" style="font-size:11px; padding:6px;"></div>
+      </details>
+    </div>
+    <table>
+      <tbody id="slugTableBody"></tbody>
+    </table>
+  </div>
+
+  <button class="secondary session-toggle" id="entityToggle">Session</button>
+  <div class="session-panel" id="entityPanel">
+    <h4>Session / Entity</h4>
+    <div class="session-row">
+      <button id="oauthLoginBtn">Login with OAuth</button>
+      <button class="secondary" id="oauthLogoutBtn">Logout</button>
+    </div>
+    <div class="session-row"><span class="note">Token:</span><span id="tokenStatus" class="code-block" style="flex:1; padding:4px 6px; font-size:11px;"></span></div>
+    <div class="session-row"><span class="note">Scopes:</span><span id="tokenScopes" class="code-block" style="flex:1; padding:4px 6px; font-size:11px;"></span></div>
+    <div class="session-row"><span class="note">Active ID:</span><span id="activeEntityId" class="code-block" style="flex:1; padding:4px 6px; font-size:11px;"></span></div>
+    <div class="session-row"><span class="note">Active Principal:</span><span id="activeEntityPrincipal" class="code-block" style="flex:1; padding:4px 6px; font-size:11px;"></span></div>
+    <div id="devEntityPanel">
+      <label for="entitySelect">Entities (dev-only)</label>
+      <select id="entitySelect"></select>
+      <div class="session-row">
+        <button class="secondary" id="refreshEntities">Refresh</button>
+        <button id="useSelectedEntity">Use selected</button>
+      </div>
+      <label for="entityPrincipalInput">Entity principal</label>
+      <input id="entityPrincipalInput" placeholder="user || name=example || role=tech" />
+      <label for="entityDisplayInput">Display name (optional)</label>
+      <input id="entityDisplayInput" placeholder="Display name" />
+      <div class="session-row">
+        <button id="simulateLoginBtn">Simulate login</button>
+      </div>
+      <span class="note">Dev mode only: creates/sets active entity via /api/v1/entities.</span>
+    </div>
+  </div>
+
+  <script>
+    window.CHAX_CONFIG = {
+      oauthClientId: "chax-ui-client",
+      baseUrl: "",
+      devMode: false,
+      showEntityPrincipal: false,
+      templatePrincipal: "template||default",
+      autoRefreshMs: 1200,
+      verifyAutoRefreshMs: 15000,
+      autoRefreshPauseAfterInteractionMs: 1200,
+      largeChecklistWarnThreshold: 800,
+      deferVerifyRenderThreshold: 500,
+      instanceSeedConcurrency: 8,
+    };
+  </script>
+  <script src="import_export.js"></script>
+  <script src="save_controller.js"></script>
+  <script src="checklist_prototype_common.js"></script>
+  <script>
+    checklistPrototype.init({
+      variantLabel: "0.0.1-1.2.4",
+      defaultMode: "user",
+      defaultEdit: false,
+    });
+  </script>
+</body>
+</html>

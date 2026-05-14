@@ -1,0 +1,336 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Choose your CAPTCHA</title>
+  <link rel="stylesheet" href="theme.css" />
+  <style>
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 2rem;
+      position: relative;
+      overflow: hidden;
+      background: var(--page-gradient);
+    }
+    .bg {
+      position: absolute;
+      inset: 0;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      pointer-events: none;
+      opacity: 0.32;
+    }
+    .bg-left,
+    .bg-right {
+      position: relative;
+      overflow: hidden;
+    }
+    .ghost {
+      position: absolute;
+      color: rgba(255, 255, 255, 0.14);
+      font-family: "Cascadia Code", "Fira Code", monospace;
+      white-space: pre;
+      filter: blur(0.4px);
+      animation: drift 22s ease-in-out infinite alternate;
+    }
+    .ghost.ui {
+      font-size: 1rem;
+      letter-spacing: 0.18em;
+    }
+    .ghost.term {
+      font-size: 0.92rem;
+      line-height: 1.5;
+    }
+    .ghost.vary {
+      animation-duration: 28s;
+      animation-delay: 4s;
+      opacity: 0.18;
+    }
+    .ghost.fast {
+      animation-duration: 18s;
+      animation-delay: 2s;
+      opacity: 0.22;
+    }
+    @keyframes drift {
+      from {
+        transform: translate3d(var(--x, 0px), var(--y, 0px), 0);
+      }
+      to {
+        transform: translate3d(calc(var(--x, 0px) + 20px), calc(var(--y, 0px) - 20px), 0);
+      }
+    }
+    .card {
+      max-width: 960px;
+      width: 100%;
+      background: var(--panel-glass);
+      border: 1px solid var(--border-ghost);
+      border-radius: 18px;
+      box-shadow: var(--shadow);
+      padding: 2rem;
+    }
+    h1 {
+      margin: 0;
+      font-size: 2.4rem;
+      letter-spacing: -0.02em;
+    }
+    .setup-link {
+      font-size: 0.95rem;
+      font-weight: 700;
+      color: var(--accent-cool);
+      text-decoration: none;
+      white-space: nowrap;
+    }
+    p {
+      color: var(--muted-strong);
+      line-height: 1.6;
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      gap: 1rem;
+      margin-top: 1.5rem;
+    }
+    .tile {
+      padding: 1rem;
+      border-radius: 12px;
+      border: 1px solid var(--border-soft);
+      background: var(--panel);
+    }
+    .tile h3 {
+      margin: 0 0 0.35rem 0;
+    }
+    a.button {
+      display: inline-block;
+      margin-top: 0.6rem;
+      padding: 0.7rem 1rem;
+      border-radius: 10px;
+      background: linear-gradient(135deg, var(--accent-cool), var(--accent-cool-strong));
+      color: var(--accent-cool-ink);
+      font-weight: 700;
+      text-decoration: none;
+    }
+    a.button.secondary {
+      background: transparent;
+      border: 1px solid var(--border-soft);
+      color: var(--text-strong);
+    }
+    .brand {
+      position: fixed;
+      right: 22px;
+      bottom: 18px;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.9rem;
+      padding: 0.65rem 0.9rem;
+      border: 1px solid var(--border-soft);
+      border-radius: 12px;
+      background: var(--panel-glass);
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(6px);
+      opacity: 0.9;
+      color: var(--text-strong);
+      text-decoration: none;
+    }
+    .brand img {
+      height: 46px;
+      filter: invert(1) brightness(1.15) contrast(1.05);
+    }
+    .brand-name {
+      font-weight: 700;
+      letter-spacing: 0.01em;
+      display: inline-flex;
+      align-items: baseline;
+      gap: 4px;
+    }
+    .tm {
+      font-size: 0.65em;
+      opacity: 0.8;
+    }
+.brand-note {
+  font-size: 0.95rem;
+  color: var(--muted-strong);
+  margin-top: 2px;
+}
+/* Session panel */
+.pill { display: inline-flex; align-items: center; gap: 6px; padding: 8px 10px; border-radius: 10px; background: var(--pill-bg); border: 1px solid var(--pill-border); font-size: 12px; color: var(--text-strong); cursor: pointer; }
+.session-panel { position: fixed; top: 56px; right: 16px; width: 320px; background: var(--panel-glass-strong); border: 1px solid var(--border-soft); border-radius: 12px; box-shadow: var(--shadow); padding: 12px; display: none; z-index: 5; }
+.session-panel h4 { margin: 0 0 6px 0; }
+.session-row { display: flex; gap: 6px; align-items: center; margin-top: 6px; }
+.code-block.small { font-size: 11px; padding: 4px 6px; flex: 1; }
+    code {
+      background: var(--mark-bg);
+      border-radius: 6px;
+      padding: 0.15rem 0.35rem;
+    }
+  </style>
+</head>
+<body>
+  <div class="bg">
+    <div class="bg-left">
+      <div class="ghost ui" style="--x: -30px; --y: 10px;">● □ ■ ▢ ▣ ◊ ◇ ❖ ◄ ▪ ▫ ▭</div>
+      <div class="ghost ui vary" style="--x: 40px; --y: 120px;">Buttons • Toggles • Sliders • Chips • Dropdowns</div>
+      <div class="ghost ui fast" style="--x: 80px; --y: 220px;">Forms • Selects • Radios • Checklists</div>
+    </div>
+    <div class="bg-right">
+      <div class="ghost term" style="--x: 20px; --y: 40px;">$ curl http://127.0.0.1:8080/api/v1/commands&#10;$ cmake --build build&#10;$ ctest --label-regex smoke</div>
+      <div class="ghost term vary" style="--x: -10px; --y: 180px;">powershell> scripts/run_tests.ps1 -Label all&#10> bash$ ./checklist_assistant_server&#10> api/v1/echo {"payload":...}</div>
+      <div class="ghost term fast" style="--x: 70px; --y: 300px;">git status&#10> chax list_checklists&#10> curl /api/v1/slugs?checklist=...</div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h1>Choose your CAPTCHA <a class="setup-link" href="checklist_assistant.html?checklist_id=initial_setup&tour=initial_setup">(initial setup click here)</a></h1>
+    <p>If you are a curious entity you can use either path. This captcha is here to ensure the interface is efficient, not to keep entities boxes.</p>
+    <div class="grid">
+      <div class="tile">
+        <h3>Human CAPTCHA</h3>
+        <p>This leads to the graphical interface, buttons, like bellow.</p>
+        <a class="button" href="checklist_assistant.html">I &#10084;&#65039; Buttons</a>
+        <button class="button secondary" id="oauthLoginBtn" style="margin-top:10px;">Login with OAuth</button>
+      </div>
+      <div class="tile">
+        <h3>Machine CAPTCHA</h3>
+        <div class="code-block" style="background:#0b1426; color:#d9e4ff; border:1px solid rgba(255,255,255,0.12);">
+          <code>$token = "&lt;access_token&gt;";&#10;Invoke-RestMethod -Uri "http://127.0.0.1:8080/api/v1/echo" `&#10;  -Method Post `&#10;  -Headers @{ Authorization = "Bearer $token" } `&#10;  -ContentType "application/json" `&#10;  -Body '{"payload":"hello from PS"}'</code>
+        </div>
+      </div>
+    </div>
+    <a class="brand" href="about.html" title="About CVMewt Inc.">
+      <img src="cvmewt-logo_0.1.7.svg" alt="CVMewt logo">
+      <div>
+        <div class="brand-name">CVMewt Inc.<span class="tm">TM</span></div>
+        <div class="brand-note">Scientific and technical consulting services; research and software development.</div>
+      </div>
+    </a>
+  </div>
+
+  <button class="pill" id="sessionToggle" style="position:fixed; top:16px; right:16px; z-index:6;">Session</button>
+  <div class="session-panel" id="sessionPanel">
+    <h4>Session</h4>
+    <div class="session-row"><span class="note">Token:</span><span id="tokenStatus" class="code-block small"></span></div>
+    <div class="session-row"><span class="note">Scopes:</span><span id="tokenScopes" class="code-block small"></span></div>
+    <div class="session-row"><span class="note">Entity ID:</span><span id="entityId" class="code-block small"></span></div>
+    <div class="session-row"><span class="note">Principal:</span><span id="entityPrincipal" class="code-block small"></span></div>
+    <div class="session-row">
+      <button id="panelLoginBtn">Login</button>
+      <button class="secondary" id="panelLogoutBtn">Logout</button>
+    </div>
+  </div>
+
+  <script>
+    (function () {
+      const CONFIG = window.CHAX_CONFIG || {};
+      const TOKEN_KEY = "chax_oauth_token";
+      const PKCE_KEY = "chax_pkce";
+      const CLIENT_ID = CONFIG.oauthClientId || "chax-ui-client";
+      const CLIENT_SECRET = CONFIG.oauthClientSecret || "chax-ui-secret";
+      const tokenStatus = document.getElementById("tokenStatus");
+      const tokenScopes = document.getElementById("tokenScopes");
+      const entityId = document.getElementById("entityId");
+      const entityPrincipal = document.getElementById("entityPrincipal");
+      const sessionPanel = document.getElementById("sessionPanel");
+      const sessionToggle = document.getElementById("sessionToggle");
+      const loginBtns = [document.getElementById("oauthLoginBtn"), document.getElementById("panelLoginBtn")];
+      const logoutBtn = document.getElementById("panelLogoutBtn");
+
+      function loadToken() {
+        try {
+          const raw = sessionStorage.getItem(TOKEN_KEY);
+          return raw ? JSON.parse(raw) : null;
+        } catch {
+          return null;
+        }
+      }
+      let authState = loadToken();
+
+      function isTokenValid() {
+        if (!authState?.access_token) return false;
+        if (!authState.expires_in) return true;
+        const expiresAt = (authState.obtained_at || 0) + authState.expires_in * 1000;
+        return Date.now() + 5000 < expiresAt;
+      }
+
+      function updateSessionUi() {
+        tokenStatus.textContent = isTokenValid() ? "ready" : "not set";
+        tokenScopes.textContent = authState?.scope || "";
+        entityId.textContent = authState?.entity_id || "";
+        entityPrincipal.textContent = authState?.entity_principal || "(hidden)";
+      }
+
+      async function fetchMe() {
+        if (!isTokenValid()) return;
+        try {
+          const resp = await fetch("/api/v1/me", { headers: { Authorization: `Bearer ${authState.access_token}` } });
+          const text = await resp.text();
+          const json = text ? JSON.parse(text) : {};
+          const ent = json.data?.entity || {};
+          authState.entity_id = ent.entity_id || "";
+          authState.entity_principal = ent.entity_principal || "";
+          sessionStorage.setItem(TOKEN_KEY, JSON.stringify(authState));
+        } catch (err) {
+          console.error("me failed", err);
+        }
+      }
+
+      function startLogin() {
+        if (!window.location.protocol.startsWith("http")) {
+          alert("Run via http://localhost (not file://).");
+          return;
+        }
+        const verifierBytes = new Uint8Array(32);
+        crypto.getRandomValues(verifierBytes);
+        const verifier = btoa(String.fromCharCode(...verifierBytes))
+          .replace(/\+/g, "-").replace(/\//g, "_").replace(/=+/g, "");
+        const encoder = new TextEncoder();
+        crypto.subtle.digest("SHA-256", encoder.encode(verifier)).then((buf) => {
+          const bytes = Array.from(new Uint8Array(buf));
+          const challenge = btoa(String.fromCharCode(...bytes))
+            .replace(/\+/g, "-").replace(/\//g, "_").replace(/=+/g, "");
+          const state = Math.random().toString(36).slice(2);
+          const redirectUri = new URL("oauth_callback.html", window.location.href).toString();
+          const pkce = {
+            verifier,
+            state,
+            clientId: CLIENT_ID,
+            clientSecret: CLIENT_SECRET,
+            redirectUri,
+            baseUrl: window.location.origin,
+            returnTo: window.location.pathname.replace(/\/ui\/?$/, "/ui/checklist_assistant.html"),
+          };
+          sessionStorage.setItem(PKCE_KEY, JSON.stringify(pkce));
+          const params = new URLSearchParams({
+            response_type: "code",
+            client_id: CLIENT_ID,
+            redirect_uri: redirectUri,
+            scope: "checklist:read checklist:write",
+            state,
+            code_challenge: challenge,
+            code_challenge_method: "S256",
+          });
+          window.location.href = `${pkce.baseUrl}/oauth/authorize?${params.toString()}`;
+        });
+      }
+
+      function logout() {
+        authState = null;
+        sessionStorage.removeItem(TOKEN_KEY);
+        sessionStorage.removeItem(PKCE_KEY);
+        updateSessionUi();
+      }
+
+      sessionToggle?.addEventListener("click", () => {
+        if (!sessionPanel) return;
+        sessionPanel.style.display = sessionPanel.style.display === "block" ? "none" : "block";
+      });
+      loginBtns.forEach((btn) => btn?.addEventListener("click", startLogin));
+      logoutBtn?.addEventListener("click", logout);
+      updateSessionUi();
+      fetchMe().then(updateSessionUi);
+    })();
+  </script>
+</body>
+</html>

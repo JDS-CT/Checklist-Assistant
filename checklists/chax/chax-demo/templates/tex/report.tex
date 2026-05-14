@@ -1,0 +1,27 @@
+\documentclass[11pt]{article}
+\usepackage{array}
+\usepackage[table]{xcolor}
+\usepackage{float}
+\usepackage{geometry}
+
+\geometry{margin=1in}
+\newcounter{tablecount}
+\setcounter{tablecount}{0}
+
+\begin{document}
+
+\section*{Checklist Report Demo}
+
+\begin{tabular}{ll}
+Checklist & {{checklist}} \\
+Instance ID & {{instance-id}} \\
+Instance Principal & {{instance-principal}} \\
+Generated At & {{generated-at}} \\
+Row Count & {{row-count}} \\
+Template & {{template-name}} \\
+\end{tabular}
+
+\section*{Auto Tables}
+{{AutoTables}}
+
+\end{document}

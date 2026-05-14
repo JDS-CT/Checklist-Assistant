@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Checklist Assistant Help</title>
+  <link rel="stylesheet" href="theme.css" />
+  <style>
+    body {
+      margin: 0;
+      min-height: 100vh;
+      padding: 18px;
+      background: var(--page-gradient);
+    }
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 14px 16px;
+      margin-bottom: 16px;
+      box-shadow: var(--shadow);
+    }
+    .bar { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+    .bar-split { justify-content: space-between; }
+    .links-row { display: inline-flex; gap: 10px; align-items: center; }
+    .title { font-size: 18px; font-weight: 700; letter-spacing: 0.02em; }
+    .pill { display: inline-flex; align-items: center; gap: 6px; padding: 6px 10px; border-radius: 10px; background: var(--pill-bg); border: 1px solid var(--pill-border); font-size: 12px; color: var(--pill-text); }
+    .pill a { color: inherit; text-decoration: none; }
+    .card {
+      width: min(980px, 100%);
+      margin: 0 auto;
+      background: var(--panel-glass);
+      border: 1px solid var(--border-soft);
+      border-radius: 16px;
+      box-shadow: var(--shadow-strong);
+      padding: 24px;
+    }
+    h1 {
+      margin: 0;
+      font-size: 1.8rem;
+      letter-spacing: -0.01em;
+    }
+    .note {
+      color: var(--muted-strong);
+      font-size: 0.98rem;
+      line-height: 1.5;
+    }
+    h2 {
+      margin: 18px 0 8px 0;
+      font-size: 1.25rem;
+      color: var(--text-strong);
+    }
+    code {
+      font-family: var(--font-mono);
+      background: var(--code-bg);
+      padding: 2px 6px;
+      border-radius: 6px;
+      border: 1px solid var(--code-border);
+    }
+    ul { margin: 8px 0 0 18px; }
+    li { margin: 6px 0; }
+  </style>
+</head>
+<body>
+  <div class="panel">
+    <div class="bar bar-split">
+      <div class="links-row">
+        <span class="pill"><a href="portal_settings.html">Settings</a></span>
+        <span class="pill"><a href="index.html">Home</a></span>
+        <span class="pill"><a href="portal_help.html">Help</a></span>
+      </div>
+      <div class="title">Checklist Assistant Help</div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h1>Checklist Assistant Help</h1>
+
+    <p class="note">
+      This page documents a few UI conventions used by the Checklist Assistant prototype.
+      For the canonical model details, see <code>spec/checklist-assistant-spec.md</code>.
+    </p>
+
+    <h2>Editing Relationships</h2>
+    <p class="note">Relationships are edited per row, from the row’s <code>Details</code> panel.</p>
+    <ul class="note">
+      <li>Open a row and click <code>Details</code>.</li>
+      <li>In <code>Relationships</code>, choose a <code>predicate</code> and enter a target ID.</li>
+      <li>Click <code>Add</code> to save the relationship.</li>
+    </ul>
+
+    <h2>Slug ID vs Address ID</h2>
+    <ul class="note">
+      <li><code>Slug ID</code> (16 chars) identifies a checklist row template.</li>
+      <li><code>Instance ID</code> (16 chars) identifies a specific deployment/run.</li>
+      <li><code>Address ID</code> (32 chars) is <code>slug_id + instance_id</code> and identifies a specific instance row.</li>
+      <li>In the Relationships editor, you can paste either a 16-char Slug ID or a 32-char Address ID; Slug IDs are resolved to an Address ID for the currently loaded instance.</li>
+    </ul>
+
+    <h2>Indicator Colors</h2>
+    <ul class="note">
+      <li><strong>Green</strong>: registered / resolved (e.g., active predicate, Slug ID that resolves for this instance).</li>
+      <li><strong>Purple</strong>: Address ID (instance-level link).</li>
+      <li><strong>Yellow</strong>: allowed but unreviewed (e.g., predicate not registered as active).</li>
+      <li><strong>Red</strong>: invalid or dead link (target Address ID not found in the database).</li>
+    </ul>
+  </div>
+</body>
+</html>

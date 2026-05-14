@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>About CVMewt Inc.</title>
+  <link rel="stylesheet" href="theme.css" />
+  <style>
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 2rem;
+      background: var(--page-gradient);
+    }
+    .card {
+      max-width: 820px;
+      width: 100%;
+      background: var(--panel-glass);
+      border: 1px solid var(--border-soft);
+      border-radius: 16px;
+      box-shadow: var(--shadow-strong);
+      padding: 24px;
+    }
+    h1 { margin: 0 0 8px 0; font-size: 2rem; letter-spacing: -0.01em; }
+    h2 { margin: 1.2rem 0 0.4rem 0; font-size: 1.15rem; color: var(--text-strong); }
+    p { margin: 0.35rem 0; color: var(--muted-strong); line-height: 1.5; }
+    ul { margin: 0.25rem 0 0.6rem 1.1rem; color: var(--muted-strong); }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 1rem; margin-top: 1rem; }
+    .tile { padding: 0.9rem; border-radius: 12px; border: 1px solid var(--border-soft); background: var(--panel); }
+    .badge { display: inline-block; padding: 4px 10px; border-radius: 10px; border: 1px solid var(--border-soft); color: var(--text-strong); font-size: 12px; }
+    .logo { height: 52px; filter: invert(1) brightness(1.1) contrast(1.05); }
+    a { color: var(--accent-cool); }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div style="display:flex; align-items:center; gap:14px; margin-bottom:12px;">
+      <img class="logo" src="cvmewt-logo_0.1.7.svg" alt="CVMewt logo">
+      <div>
+        <h1>CVMewt Inc. <span class="badge">CT Domestic Corporation</span></h1>
+        <p>Founded 2025 · Incorporated in Connecticut</p>
+      </div>
+    </div>
+
+    <h2>Pronunciation</h2>
+    <p><strong>Simple:</strong> “C” (the letter) · “V” (the letter) · “mewt” (rhymes with mute/newt)</p>
+    <p><strong>IPA:</strong> /ˈsiː ˈviː mjuːt/</p>
+
+    <h2>What we do</h2>
+    <p>Scientific and technical consulting services; research and software development.</p>
+    <p>Primary industry classification: NAICS 541690 (Other Scientific and Technical Consulting Services).</p>
+
+    <div class="grid">
+      <div class="tile">
+        <h3>Incorporation</h3>
+        <p>Certificate of Incorporation (CT SOS Filing #0014031419)</p>
+        <p>Filed: Dec 3, 2025 (Secretary of the State of Connecticut)</p>
+      </div>
+      <div class="tile">
+        <h3>Trade Name</h3>
+        <p>“CVMewt” trade name on file with the Town of Colchester, CT</p>
+        <p>Recorded: Dec 5, 2025 · Expires: Dec 5, 2030</p>
+      </div>
+      <div class="tile">
+        <h3>Registered Agent</h3>
+        <p>Joshua Smith (Connecticut)</p>
+      </div>
+    </div>
+
+    <p style="margin-top:1rem;">For project information or API access, use the main checklist assistant links on the home page.</p>
+  </div>
+</body>
+</html>

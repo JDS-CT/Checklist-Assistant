@@ -1,0 +1,71 @@
+{
+  "version": 5,
+  "cmakeMinimumRequired": {
+    "major": 3,
+    "minor": 28,
+    "patch": 0
+  },
+  "configurePresets": [
+    {
+      "name": "windows-gcc-ninja",
+      "displayName": "Windows (MinGW GCC + Ninja)",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/windows-gcc",
+      "cacheVariables": {
+        "CMAKE_C_COMPILER": "gcc",
+        "CMAKE_CXX_COMPILER": "g++",
+        "CMAKE_BUILD_TYPE": "RelWithDebInfo"
+      }
+    },
+    {
+      "name": "linux-gcc-ninja",
+      "displayName": "Linux (GCC + Ninja)",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/linux-gcc",
+      "cacheVariables": {
+        "CMAKE_C_COMPILER": "gcc",
+        "CMAKE_CXX_COMPILER": "g++",
+        "CMAKE_BUILD_TYPE": "RelWithDebInfo"
+      }
+    },
+    {
+      "name": "linux-clang-ninja",
+      "displayName": "Linux (Clang + Ninja)",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/linux-clang",
+      "cacheVariables": {
+        "CMAKE_C_COMPILER": "clang",
+        "CMAKE_CXX_COMPILER": "clang++",
+        "CMAKE_BUILD_TYPE": "RelWithDebInfo"
+      }
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "windows-gcc-ninja",
+      "configurePreset": "windows-gcc-ninja"
+    },
+    {
+      "name": "linux-gcc-ninja",
+      "configurePreset": "linux-gcc-ninja"
+    },
+    {
+      "name": "linux-clang-ninja",
+      "configurePreset": "linux-clang-ninja"
+    }
+  ],
+  "testPresets": [
+    {
+      "name": "windows-gcc-ninja",
+      "configurePreset": "windows-gcc-ninja"
+    },
+    {
+      "name": "linux-gcc-ninja",
+      "configurePreset": "linux-gcc-ninja"
+    },
+    {
+      "name": "linux-clang-ninja",
+      "configurePreset": "linux-clang-ninja"
+    }
+  ]
+}

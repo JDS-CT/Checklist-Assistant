@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>OAuth Callback</title>
+  <link rel="stylesheet" href="theme.css">
+  <style>
+    body { background: var(--page-gradient); color: var(--text); padding: 16px; }
+    .box { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 14px; max-width: 520px; box-shadow: var(--shadow); }
+    code { background: var(--code-bg); padding: 2px 4px; border-radius: 4px; }
+  </style>
+</head>
+<body>
+  <div class="box">
+    <h3>Completing OAuth…</h3>
+    <p id="status">Exchanging code…</p>
+  </div>
+  <script>
+    (async function () {
+      const params = new URLSearchParams(window.location.search);
+      const code = params.get("code");
+      const state = params.get("state");
+      const pkceRaw = sessionStorage.getItem("chax_pkce");
+      const statusEl = document.getElementById("status");
+      const fail = (msg) => {
+        statusEl.textContent = msg;
+      };
+      if (!code || !state) {
+        return fail("Missing code or state in callback URL.");
+      }
+      if (!pkceRaw) {
+        return fail("Missing PKCE verifier. Please restart login.");
+      }
+      const pkce = JSON.parse(pkceRaw);
+      if (pkce.state !== state) {
+        return fail("State mismatch. Please restart login.");
+      }
+      try {
+        const body = {
+          grant_type: "authorization_code",
+          client_id: pkce.clientId,
+          client_secret: pkce.clientSecret || "",
+          code,
+          redirect_uri: pkce.redirectUri,
+          code_verifier: pkce.verifier,
+        };
+        const resp = await fetch(`${pkce.baseUrl}/oauth/token`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        }).catch((err) => {
+          throw new Error("Network/CORS error: " + err.message);
+        });
+        const text = await resp.text();
+        let json = {};
+        try {
+          json = text ? JSON.parse(text) : {};
+        } catch (err) {
+          throw new Error(`Token response not JSON (status ${resp.status}): ${text}`);
+        }
+        if (!resp.ok || !json.access_token) {
+          throw new Error(`Token exchange failed (status ${resp.status}): ${text || "no body"}`);
+        }
+        const tokenPayload = {
+          access_token: json.access_token,
+          refresh_token: json.refresh_token,
+          scope: json.scope || "",
+          expires_in: json.expires_in || 0,
+          obtained_at: Date.now(),
+        };
+        sessionStorage.setItem("chax_oauth_token", JSON.stringify(tokenPayload));
+        sessionStorage.removeItem("chax_pkce");
+        statusEl.textContent = "Login complete. Redirecting…";
+        window.location.href = pkce.returnTo || "checklist_assistant.html";
+      } catch (err) {
+        fail(err.message);
+      }
+    })();
+  </script>
+</body>
+</html>

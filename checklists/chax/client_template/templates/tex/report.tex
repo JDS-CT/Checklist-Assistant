@@ -1,0 +1,74 @@
+\documentclass[11pt]{article}
+
+\usepackage[margin=1in]{geometry}
+\usepackage{array}
+\usepackage[table]{xcolor}
+\usepackage{float}
+\usepackage{embedfile}
+\usepackage{fancyhdr}
+\usepackage{textcomp}
+
+% AutoTables requirements
+\newcounter{tablecount}
+\setcounter{tablecount}{0}
+
+% JSONL basename matches \jobname (when compiling <basename>.tex) + ".jsonl"
+\newcommand{\SidecarName}{\jobname.jsonl}
+\newcommand{\AppName}{Checklist Assistant\texttrademark{}}
+\newcommand{\ShowSidecarRow}{0}
+\newcommand{\EmbedJsonl}{1}
+\newcommand{\EmbeddedStatus}{no}
+% Keep in sync with spec/checklist-assistant-spec.md
+\newcommand{\SpecVersion}{0.0.1-1.1.4}
+\newcommand{\ReportSignature}{CHAX-REPORT v\SpecVersion}
+\newcommand{\MetadataPointer}{%
+  \texttt{\ReportSignature}; JSONL: \texttt{\SidecarName}; Embedded: \EmbeddedStatus%
+}
+\newcommand{\SidecarRow}{%
+  \ifnum\ShowSidecarRow=1
+    Sidecar JSONL & \texttt{\SidecarName} \\
+  \fi
+}
+\newcommand{\EmbedJsonlAttachment}{%
+  \ifnum\EmbedJsonl=1
+    \renewcommand{\EmbeddedStatus}{yes}%
+    \embedfile{\SidecarName}%
+  \fi
+}
+
+\newcommand{\FooterClientTemplate}{%
+  \tiny\sffamily
+  \begin{tabular}{@{}c@{}}
+    File generated with \AppName \
+  \end{tabular}%
+}
+
+\newcommand{\UseFooter}[1]{%
+  \pagestyle{fancy}%
+  \fancyhf{}%
+  \renewcommand{\headrulewidth}{0pt}%
+  \renewcommand{\footrulewidth}{0.2pt}%
+  \fancyfoot[C]{#1}%
+}
+
+\begin{document}
+\EmbedJsonlAttachment
+\UseFooter{\FooterClientTemplate}
+
+\section*{ {{checklist}} }
+
+\subsection*{Report Metadata}
+\begin{tabular}{@{}ll@{}}
+Checklist & {{checklist}} \\
+Instance ID & {{instance-id}} \\
+Instance Principal & {{instance-principal}} \\
+Timestamp (UTC) & {{timestamp}} \\
+Rendered Rows & {{row-count}} \\
+Template & {{template-name}} \\
+Metadata Pointer & \MetadataPointer \\
+\SidecarRow
+\end{tabular}
+
+{{AutoTables}}
+
+\end{document}

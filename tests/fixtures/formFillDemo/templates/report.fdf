@@ -1,0 +1,15 @@
+%FDF-1.2
+1 0 obj
+<<
+/FDF <<
+/F (formFillDemo.pdf)
+/Fields [
+<< /T (checklist) /V () >>
+<< /T (instance_id) /V () >>
+]
+>>
+>>
+endobj
+trailer
+<< /Root 1 0 R >>
+%%EOF

@@ -1,0 +1,360 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Portal Settings</title>
+  <link rel="stylesheet" href="theme.css" />
+  <style>
+    body {
+      margin: 0;
+      min-height: 100vh;
+      padding: 18px;
+      background: var(--page-gradient);
+    }
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 14px 16px;
+      margin-bottom: 16px;
+      box-shadow: var(--shadow);
+    }
+    .bar { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+    .bar-split { justify-content: space-between; }
+    .links-row { display: inline-flex; gap: 10px; align-items: center; }
+    .title { font-size: 18px; font-weight: 700; letter-spacing: 0.02em; }
+    .pill { display: inline-flex; align-items: center; gap: 6px; padding: 6px 10px; border-radius: 10px; background: var(--pill-bg); border: 1px solid var(--pill-border); font-size: 12px; color: var(--pill-text); }
+    .pill a { color: inherit; text-decoration: none; }
+    .card {
+      width: min(960px, 100%);
+      margin: 0 auto;
+      background: var(--panel-glass);
+      border: 1px solid var(--border-soft);
+      border-radius: 16px;
+      box-shadow: var(--shadow-strong);
+      padding: 24px;
+    }
+    h1 {
+      margin: 0;
+      font-size: 1.8rem;
+      letter-spacing: -0.01em;
+    }
+    .note {
+      color: var(--muted-strong);
+      font-size: 0.95rem;
+      margin: 10px 0;
+    }
+    .form-row {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 12px;
+      margin-top: 12px;
+    }
+    label {
+      font-size: 13px;
+      color: var(--muted);
+      display: block;
+      margin-bottom: 4px;
+    }
+    input,
+    textarea {
+      width: 100%;
+      padding: 10px;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      background: var(--field-bg);
+      color: var(--text-strong);
+      font-family: inherit;
+      font-size: 14px;
+    }
+    textarea {
+      min-height: 120px;
+      resize: vertical;
+      line-height: 1.45;
+    }
+    .actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      align-items: center;
+      margin-top: 14px;
+    }
+    button {
+      padding: 10px 14px;
+      border: none;
+      border-radius: 10px;
+      background: var(--accent);
+      color: var(--accent-ink);
+      cursor: pointer;
+      font-weight: 700;
+      letter-spacing: 0.01em;
+    }
+    button.secondary {
+      background: transparent;
+      border: 1px solid var(--border);
+      color: var(--text-strong);
+    }
+    #healthStatus {
+      min-width: 200px;
+    }
+    .code-output {
+      margin-top: 10px;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+  </style>
+</head>
+<body>
+  <div class="panel">
+    <div class="bar bar-split">
+      <div class="links-row">
+        <span class="pill"><a href="portal_settings.html">Settings</a></span>
+        <span class="pill"><a href="index.html">Home</a></span>
+        <span class="pill"><a href="portal_help.html">Help</a></span>
+      </div>
+      <div class="title">Portal Settings</div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h1>Portal Settings</h1>
+    <p class="note">Configure the host and port for API calls. Values are stored in your browser and used by the checklist assistant.</p>
+    <div class="form-row">
+      <div>
+        <label for="hostInput">Host</label>
+        <input id="hostInput" placeholder="127.0.0.1">
+      </div>
+      <div>
+        <label for="portInput">Port</label>
+        <input id="portInput" placeholder="8080">
+      </div>
+    </div>
+    <div class="actions">
+      <button id="saveBtn">Save settings</button>
+      <button class="secondary" id="healthBtn" type="button">Check health</button>
+      <span id="healthStatus" class="note"></span>
+    </div>
+    <p class="note">Default: http://127.0.0.1:8080. If you change servers, update here first.</p>
+    <div class="form-row">
+      <div style="grid-column: 1 / -1;">
+        <label for="checklistPathsInput">Checklist asset roots</label>
+        <textarea id="checklistPathsInput" spellcheck="false" placeholder="private_assets=D:\Checklist Assistant Assets"></textarea>
+        <p class="note">One entry per line. Use `name=path`; a selected folder may be either a `checklists` folder or a parent folder containing one. Checklists below it must use `checklists/&lt;pack&gt;/&lt;checklist&gt;/checklist.md`. Saved paths stay in `.chax/local_settings.json` on this PC.</p>
+      </div>
+    </div>
+    <div class="actions">
+      <button class="secondary" id="loadAssetRootsBtn" type="button">Load asset roots</button>
+      <button id="saveAssetRootsBtn" type="button">Save asset roots</button>
+      <span id="assetRootsStatus" class="note"></span>
+    </div>
+    <pre id="assetRootsOutput" class="note code-output"></pre>
+  </div>
+
+  <script>
+    (function () {
+      const HOST_KEY = "chaxHost";
+      const PORT_KEY = "chaxPort";
+      const hostInput = document.getElementById("hostInput");
+      const portInput = document.getElementById("portInput");
+      const healthBtn = document.getElementById("healthBtn");
+      const healthStatus = document.getElementById("healthStatus");
+      const saveBtn = document.getElementById("saveBtn");
+      const checklistPathsInput = document.getElementById("checklistPathsInput");
+      const loadAssetRootsBtn = document.getElementById("loadAssetRootsBtn");
+      const saveAssetRootsBtn = document.getElementById("saveAssetRootsBtn");
+      const assetRootsStatus = document.getElementById("assetRootsStatus");
+      const assetRootsOutput = document.getElementById("assetRootsOutput");
+      const TOKEN_KEY = "chax_oauth_token";
+
+      function loadStored() {
+        hostInput.value = window.localStorage?.getItem(HOST_KEY) || "127.0.0.1";
+        portInput.value = window.localStorage?.getItem(PORT_KEY) || "8080";
+        if (healthStatus) healthStatus.textContent = "";
+      }
+
+      function buildBaseUrl(rawHost, rawPort) {
+        let host = (rawHost || "").trim();
+        let port = (rawPort || "").trim();
+        if (!host) host = "127.0.0.1";
+        // If the host already includes a scheme, use it as-is (allow https://cvmewt.com).
+        if (host.startsWith("http://") || host.startsWith("https://")) {
+          return host.replace(/\/+$/, "");
+        }
+        // If no scheme, infer from port (443 -> https, else http).
+        if (!port) port = "8080";
+        const scheme = port === "443" ? "https" : "http";
+        return `${scheme}://${host}${port ? `:${port}` : ""}`;
+      }
+
+      function loadToken() {
+        try {
+          const raw = sessionStorage.getItem(TOKEN_KEY);
+          return raw ? JSON.parse(raw) : null;
+        } catch {
+          return null;
+        }
+      }
+
+      function authHeaders(extra = {}) {
+        const headers = new Headers(extra);
+        const token = loadToken();
+        if (token?.access_token) {
+          headers.set("Authorization", `Bearer ${token.access_token}`);
+        }
+        return headers;
+      }
+
+      async function fetchJson(path, options = {}) {
+        const base = buildBaseUrl(hostInput.value, portInput.value);
+        const resp = await fetch(`${base}${path}`, {
+          ...options,
+          headers: authHeaders(options.headers || {}),
+        });
+        const text = await resp.text();
+        let parsed = {};
+        if (text) parsed = JSON.parse(text);
+        if (!resp.ok || parsed.ok === false) {
+          throw new Error(parsed.error ? `${parsed.error.code}: ${parsed.error.message}` : text || resp.statusText);
+        }
+        return parsed.data !== undefined ? parsed.data : parsed;
+      }
+
+      function renderAssetSettings(data) {
+        const paths = Array.isArray(data?.checklist_paths) ? data.checklist_paths : [];
+        checklistPathsInput.value = paths
+          .map((entry) => `${entry.name || ""}=${entry.path || ""}`)
+          .join("\n");
+        const roots = Array.isArray(data?.effective_roots) ? data.effective_roots : [];
+        assetRootsOutput.textContent = roots
+          .map((root) => `${root.primary ? "public" : "extra"} ${root.name}: ${root.path}`)
+          .join("\n");
+      }
+
+      function parseAssetPaths() {
+        const lines = (checklistPathsInput.value || "").split(/\r?\n/);
+        const entries = [];
+        let index = 1;
+        for (const rawLine of lines) {
+          const line = rawLine.trim();
+          if (!line || line.startsWith("#")) continue;
+          const eq = line.indexOf("=");
+          if (eq === -1) {
+            entries.push({ name: `extra_${index++}`, path: line });
+          } else {
+            const name = line.slice(0, eq).trim() || `extra_${index++}`;
+            const path = line.slice(eq + 1).trim();
+            entries.push({ name, path });
+          }
+        }
+        return entries;
+      }
+
+      function saveSettings() {
+        const host = (hostInput.value || "").trim();
+        const port = (portInput.value || "").trim();
+        const base = buildBaseUrl(host, port);
+        if (window.localStorage) {
+          window.localStorage.setItem(HOST_KEY, host || "127.0.0.1");
+          window.localStorage.setItem(PORT_KEY, port || "");
+        }
+        if (healthStatus) {
+          healthStatus.textContent = `Saved: ${base}`;
+          healthStatus.style.color = "#c7d3f2";
+        }
+      }
+
+      async function checkHealth() {
+        const host = (hostInput.value || "").trim();
+        const port = (portInput.value || "").trim();
+        const base = buildBaseUrl(host, port);
+        const target = `${base}/api/v1/health`;
+        if (healthStatus) {
+          healthStatus.textContent = "Checking...";
+          healthStatus.style.color = "#c7d3f2";
+        }
+        healthBtn.disabled = true;
+        try {
+          const resp = await fetch(target);
+          const text = await resp.text();
+          let data = {};
+          if (text) data = JSON.parse(text);
+          if (!resp.ok || data.ok === false) {
+            throw new Error(data.error ? `${data.error.code}: ${data.error.message}` : text || resp.statusText);
+          }
+          const msg = `OK (${data.data?.status || data.status || "ok"}, uptime ${data.data?.uptime_ms || data.uptime_ms} ms)`;
+          if (healthStatus) {
+            healthStatus.textContent = msg;
+            healthStatus.style.color = "#7bd58c";
+          }
+        } catch (err) {
+          if (healthStatus) {
+            healthStatus.textContent = `Error: ${err.message}`;
+            healthStatus.style.color = "#e57f7f";
+          }
+        } finally {
+          healthBtn.disabled = false;
+        }
+      }
+
+      async function loadAssetRoots() {
+        if (assetRootsStatus) {
+          assetRootsStatus.textContent = "Loading...";
+          assetRootsStatus.style.color = "#c7d3f2";
+        }
+        loadAssetRootsBtn.disabled = true;
+        try {
+          const data = await fetchJson("/api/v1/local/settings");
+          renderAssetSettings(data);
+          if (assetRootsStatus) {
+            assetRootsStatus.textContent = "Loaded.";
+            assetRootsStatus.style.color = "#7bd58c";
+          }
+        } catch (err) {
+          if (assetRootsStatus) {
+            assetRootsStatus.textContent = `Error: ${err.message}`;
+            assetRootsStatus.style.color = "#e57f7f";
+          }
+        } finally {
+          loadAssetRootsBtn.disabled = false;
+        }
+      }
+
+      async function saveAssetRoots() {
+        if (assetRootsStatus) {
+          assetRootsStatus.textContent = "Saving...";
+          assetRootsStatus.style.color = "#c7d3f2";
+        }
+        saveAssetRootsBtn.disabled = true;
+        try {
+          const data = await fetchJson("/api/v1/local/settings", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ checklist_paths: parseAssetPaths() }),
+          });
+          renderAssetSettings(data);
+          if (assetRootsStatus) {
+            assetRootsStatus.textContent = "Saved.";
+            assetRootsStatus.style.color = "#7bd58c";
+          }
+        } catch (err) {
+          if (assetRootsStatus) {
+            assetRootsStatus.textContent = `Error: ${err.message}`;
+            assetRootsStatus.style.color = "#e57f7f";
+          }
+        } finally {
+          saveAssetRootsBtn.disabled = false;
+        }
+      }
+
+      saveBtn.addEventListener("click", saveSettings);
+      healthBtn.addEventListener("click", checkHealth);
+      loadAssetRootsBtn.addEventListener("click", loadAssetRoots);
+      saveAssetRootsBtn.addEventListener("click", saveAssetRoots);
+      window.addEventListener("load", () => {
+        loadStored();
+        loadAssetRoots();
+      });
+    })();
+  </script>
+</body>
+</html>
