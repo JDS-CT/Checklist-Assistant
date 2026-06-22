@@ -818,6 +818,56 @@ int main() {
     }
     Assert(found_outgoing, "Workspace markdown import must derive an outgoing address relationship");
 
+    current_step = "graph projection";
+    const auto graph_response =
+        client.Get("/api/v1/visualizations/graph",
+                   {{"checklist", ws_checklist}, {"instance_id", ws_instance_id}, {"pack", ws_pack}},
+                   auth_headers);
+    Assert(graph_response.status == 200, "Graph projection should return 200");
+    const auto graph_response_json =
+        nlohmann::json::parse(graph_response.body, nullptr, /*allow_exceptions=*/false);
+    Assert(graph_response_json.value("ok", false), "Graph projection should set ok=true");
+    const auto graph_data = graph_response_json["data"];
+    Assert(graph_data.value("schema", "") == "chax-graph-view-v1",
+           "Graph projection should report the versioned schema");
+    Assert(graph_data.value("nodes", nlohmann::json::array()).size() == 2,
+           "Graph projection should contain selected checklist rows");
+    bool graph_has_order_edge = false;
+    bool graph_has_relationship_edge = false;
+    for (const auto& edge : graph_data.value("edges", nlohmann::json::array())) {
+      if (edge.value("kind", "") == "checklistOrder") {
+        graph_has_order_edge = true;
+      }
+      if (edge.value("kind", "") == "relationship" &&
+          edge.value("predicate", "") == "passPropagateValidatedPass") {
+        graph_has_relationship_edge = true;
+      }
+    }
+    Assert(graph_has_order_edge, "Graph projection should derive checklist order edges");
+    Assert(graph_has_relationship_edge, "Graph projection should preserve relationship edges");
+
+    nlohmann::json graph_export_payload{
+        {"checklist", ws_checklist},
+        {"pack", ws_pack},
+        {"instance_id", ws_instance_id},
+    };
+    const auto graph_export = client.Post("/api/v1/workspace/visualizations/export",
+                                          graph_export_payload.dump(), {}, "application/json",
+                                          auth_headers);
+    Assert(graph_export.status == 201, "Graph export should return 201");
+    const auto graph_export_json =
+        nlohmann::json::parse(graph_export.body, nullptr, /*allow_exceptions=*/false);
+    Assert(graph_export_json.value("ok", false), "Graph export should set ok=true");
+    const auto graph_export_root = md_templates_root / "visualizations" / ws_instance_id;
+    Assert(std::filesystem::exists(graph_export_root / "graph.json"),
+           "Graph export should write JSON under the checklist visualizations folder");
+    Assert(std::filesystem::exists(graph_export_root / "section-flow.dot"),
+           "Graph export should write DOT under the checklist visualizations folder");
+    Assert(std::filesystem::exists(graph_export_root / "section-flow.mmd"),
+           "Graph export should write Mermaid under the checklist visualizations folder");
+    RecordStep(current_step, true, "graph view and asset-pack exports ok");
+
+    current_step = "workspace markdown";
     nlohmann::json ws_export_payload{
         {"checklist", ws_checklist},
         {"pack", ws_pack},

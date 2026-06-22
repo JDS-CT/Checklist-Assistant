@@ -48,7 +48,7 @@ if (CHAX_ENFORCE_CLANG_TIDY)
   endif()
 endif()
 
-if (CHAX_CLANG_TIDY_EXECUTABLE)
+if (CHAX_ENFORCE_CLANG_TIDY AND CHAX_CLANG_TIDY_EXECUTABLE)
   set(CMAKE_CXX_CLANG_TIDY
     ${CHAX_CLANG_TIDY_EXECUTABLE}
     --config-file=${CHAX_CLANG_TIDY_CONFIG_FILE}
@@ -107,6 +107,7 @@ add_executable(checklist_assistant_server
   src/core/asset_pack.cpp
   src/core/checklist_markdown.cpp
   src/core/checklist_store.cpp
+  src/core/graph_projection.cpp
   src/core/logging.cpp
   src/core/oauth.cpp
   src/core/report_generator.cpp
@@ -143,6 +144,32 @@ endif()
 target_include_directories(checklist_assistant PRIVATE ${CHAX_INCLUDE_DIRS})
 target_compile_options(checklist_assistant PRIVATE ${CHAX_WARNINGS})
 
+set(CHAX_WINDOWS_RUNTIME_STAGE_DIR "${CMAKE_BINARY_DIR}/runtime" CACHE PATH
+    "Directory for a portable Checklist Assistant Windows runtime")
+if (WIN32)
+  add_custom_target(stage-windows-runtime
+    DEPENDS checklist_assistant checklist_assistant_server
+    COMMAND ${CMAKE_COMMAND} -E rm -rf "${CHAX_WINDOWS_RUNTIME_STAGE_DIR}"
+    COMMAND ${CMAKE_COMMAND} -E make_directory "${CHAX_WINDOWS_RUNTIME_STAGE_DIR}"
+    COMMAND ${CMAKE_COMMAND} -E copy "$<TARGET_FILE:checklist_assistant>"
+      "${CHAX_WINDOWS_RUNTIME_STAGE_DIR}"
+    COMMAND ${CMAKE_COMMAND} -E copy "$<TARGET_FILE:checklist_assistant_server>"
+      "${CHAX_WINDOWS_RUNTIME_STAGE_DIR}"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+      "$<TARGET_FILE_DIR:checklist_assistant>/libstdc++-6.dll"
+      "$<TARGET_FILE_DIR:checklist_assistant>/libgcc_s_seh-1.dll"
+      "$<TARGET_FILE_DIR:checklist_assistant>/libwinpthread-1.dll"
+      "${CHAX_WINDOWS_RUNTIME_STAGE_DIR}"
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+      "${CMAKE_SOURCE_DIR}/CHAX-CLIENT" "${CHAX_WINDOWS_RUNTIME_STAGE_DIR}/CHAX-CLIENT"
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+      "${CMAKE_SOURCE_DIR}/checklists" "${CHAX_WINDOWS_RUNTIME_STAGE_DIR}/checklists"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different "${CMAKE_SOURCE_DIR}/LICENSE"
+      "${CMAKE_SOURCE_DIR}/NOTICE" "${CMAKE_SOURCE_DIR}/README.md"
+      "${CHAX_WINDOWS_RUNTIME_STAGE_DIR}"
+    VERBATIM)
+endif()
+
 add_executable(chax-mcp-bridge
   src/tools/chax_mcp_bridge.cpp
 )
@@ -167,6 +194,7 @@ add_executable(mcp-bridge-test
   src/core/asset_pack.cpp
   src/core/checklist_markdown.cpp
   src/core/checklist_store.cpp
+  src/core/graph_projection.cpp
   src/core/logging.cpp
   src/core/oauth.cpp
   src/core/report_generator.cpp
@@ -258,12 +286,29 @@ endif()
 add_test(NAME integration-schema COMMAND integration-schema-test)
 set_tests_properties(integration-schema PROPERTIES LABELS "smoke")
 
+add_executable(graph-projection-test
+  tests/graph_projection_test.cpp
+  src/core/asset_pack.cpp
+  src/core/checklist_store.cpp
+  src/core/graph_projection.cpp
+  src/core/logging.cpp
+)
+target_include_directories(graph-projection-test PRIVATE ${CHAX_INCLUDE_DIRS})
+target_compile_options(graph-projection-test PRIVATE ${CHAX_WARNINGS})
+target_link_libraries(graph-projection-test PRIVATE apim-sqlite3 apim-xxhash)
+if (WIN32)
+  target_link_libraries(graph-projection-test PRIVATE ws2_32 iphlpapi)
+endif()
+add_test(NAME graph-projection COMMAND graph-projection-test)
+set_tests_properties(graph-projection PROPERTIES LABELS "smoke")
+
 add_executable(http-api-test
   tests/http_api_test.cpp
   src/core/app.cpp
   src/core/asset_pack.cpp
   src/core/checklist_markdown.cpp
   src/core/checklist_store.cpp
+  src/core/graph_projection.cpp
   src/core/logging.cpp
   src/core/oauth.cpp
   src/core/report_generator.cpp
@@ -316,6 +361,7 @@ add_executable(report-api-flow-test
   src/core/asset_pack.cpp
   src/core/checklist_markdown.cpp
   src/core/checklist_store.cpp
+  src/core/graph_projection.cpp
   src/core/logging.cpp
   src/core/oauth.cpp
   src/core/report_generator.cpp
@@ -338,6 +384,7 @@ add_executable(oauth-flow-test
   src/core/asset_pack.cpp
   src/core/checklist_markdown.cpp
   src/core/checklist_store.cpp
+  src/core/graph_projection.cpp
   src/core/logging.cpp
   src/core/oauth.cpp
   src/core/report_generator.cpp
@@ -359,6 +406,7 @@ add_executable(oauth-authorize-ui-test
   src/core/asset_pack.cpp
   src/core/checklist_markdown.cpp
   src/core/checklist_store.cpp
+  src/core/graph_projection.cpp
   src/core/logging.cpp
   src/core/oauth.cpp
   src/core/report_generator.cpp
@@ -412,6 +460,7 @@ foreach(chax_executable_target IN ITEMS
   markdown-compat-test
   markdown-relationships-test
   integration-schema-test
+  graph-projection-test
   http-api-test
   predicate-daemon-exhaustive-test
   predicate-daemon-exhaustive-csv-test

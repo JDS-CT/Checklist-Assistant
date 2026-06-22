@@ -104,11 +104,17 @@ RuntimePaths ResolvePaths(const std::filesystem::path& exe_path) {
   paths.exe_path = exe_path;
   const auto exe_dir = exe_path.parent_path();
   paths.working_dir = exe_dir;
-  if (!HasRuntimeAssets(paths.working_dir) && exe_dir.has_parent_path()) {
-    const auto parent_dir = exe_dir.parent_path();
-    if (HasRuntimeAssets(parent_dir)) {
-      paths.working_dir = parent_dir;
+  std::filesystem::path candidate = exe_dir;
+  for (int depth = 0; depth <= 4 && !candidate.empty(); ++depth) {
+    if (HasRuntimeAssets(candidate)) {
+      paths.working_dir = candidate;
+      break;
     }
+    const auto parent = candidate.parent_path();
+    if (parent == candidate) {
+      break;
+    }
+    candidate = parent;
   }
   paths.runtime_dir = paths.working_dir / ".chax";
   paths.run_dir = paths.runtime_dir / "run";

@@ -25,6 +25,7 @@
 #include "core/asset_pack.hpp"
 #include "core/checklist_markdown.hpp"
 #include "core/checklist_store.hpp"
+#include "core/graph_projection.hpp"
 #include "core/logging.hpp"
 #include "core/oauth.hpp"
 #include "core/report_generator.hpp"
@@ -67,6 +68,8 @@ const std::vector<DemoCommand> kCommandCatalog = {
     {"GET", "/api/v1/history/<address_id>", "Return history snapshots for a slug address."},
     {"GET", "/api/v1/export/json", "Export all slugs as a JSON array."},
     {"GET", "/api/v1/export/jsonl", "Export all slugs as JSON Lines."},
+    {"GET", "/api/v1/visualizations/graph",
+     "Return a read-only graph projection for one checklist instance."},
     {"POST", "/api/v1/import/jsonl",
      "Import JSON Lines into a checklist instance (update existing rows, optionally add missing)."},
     {"GET", "/api/v1/export/markdown/<checklist>", "Export a checklist as canonical Markdown for authors."},
@@ -80,6 +83,8 @@ const std::vector<DemoCommand> kCommandCatalog = {
      "Import a Markdown checklist template from the checklists asset packs."},
     {"POST", "/api/v1/workspace/markdown/export",
      "Export a checklist (template or instance data) into checklists/<pack>/<checklist>/checklist.md."},
+    {"POST", "/api/v1/workspace/visualizations/export",
+     "Export deterministic graph views under a checklist asset pack's visualizations folder."},
     {"POST", "/api/v1/workspace/asset-pack/export",
      "Archive checklists/<pack>/<checklist>/ as a transportable .chk/.7z/.zip asset pack."},
     {"POST", "/api/v1/workspace/asset-pack/import",
@@ -1578,6 +1583,64 @@ json SlugToJson(const ChecklistSlug& slug) {
           {"entity_id", slug.entity_id},
           {"instructions", slug.instructions},
           {"relationships", relationships}};
+}
+
+json ChecklistGraphToJson(const ChecklistGraph& graph) {
+  json nodes = json::array();
+  std::unordered_set<std::string> sections;
+  for (const auto& node : graph.nodes) {
+    sections.insert(node.section);
+    nodes.push_back({
+        {"address_id", node.address_id},
+        {"slug_id", node.slug_id},
+        {"address_order", node.address_order},
+        {"section", node.section},
+        {"procedure", node.procedure},
+        {"action", node.action},
+        {"spec", node.spec},
+        {"result", node.result},
+        {"status", node.status},
+        {"comment", node.comment},
+        {"instructions", node.instructions},
+        {"spec_kind", node.spec_kind},
+        {"visual_shape", node.visual_shape},
+        {"incoming_relationship_count", node.incoming_relationship_count},
+        {"outgoing_relationship_count", node.outgoing_relationship_count},
+    });
+  }
+  json edges = json::array();
+  std::size_t relationship_count = 0;
+  std::size_t external_relationship_count = 0;
+  for (const auto& edge : graph.edges) {
+    if (edge.kind == "relationship") {
+      ++relationship_count;
+      if (edge.is_external) {
+        ++external_relationship_count;
+      }
+    }
+    edges.push_back({
+        {"source_address_id", edge.source_address_id},
+        {"target_address_id", edge.target_address_id},
+        {"predicate", edge.predicate},
+        {"kind", edge.kind},
+        {"is_lineage", edge.is_lineage},
+        {"is_external", edge.is_external},
+        {"external_category", edge.external_category},
+    });
+  }
+  return {
+      {"schema", "chax-graph-view-v1"},
+      {"checklist", graph.checklist},
+      {"instance_id", graph.instance_id},
+      {"nodes", nodes},
+      {"edges", edges},
+      {"warnings", graph.warnings},
+      {"summary",
+       {{"sections", sections.size()},
+        {"nodes", graph.nodes.size()},
+        {"relationships", relationship_count},
+        {"external_relationships", external_relationship_count}}},
+  };
 }
 
 void AssignImportOrder(std::vector<ChecklistSlug>& slugs) {
@@ -3973,6 +4036,37 @@ void ConfigureServer(platform::HttpServer& server, ChecklistStore& store, OAuthS
                            {"next_cursor", next_cursor ? json(*next_cursor) : json(nullptr)}});
   };
 
+  auto handle_visualization_graph = [&store](const platform::HttpRequest& request) {
+    const std::string checklist = GetQueryParam(request, "checklist", "");
+    const std::string instance_id = GetQueryParam(request, "instance_id", "");
+    if (checklist.empty() || instance_id.empty()) {
+      return ErrorResponse("INVALID_FIELD", "checklist and instance_id are required.", {}, 400);
+    }
+    if (!core::IsValidBase32Id(instance_id, 16)) {
+      return ErrorResponse("INVALID_FIELD", "instance_id must be a 16-char Base32 token.",
+                           json{{"instance_id", instance_id}}, 400);
+    }
+
+    const std::string source_name = GetQueryParam(request, "source_name", "");
+    const std::string pack = GetQueryParam(request, "pack", "");
+    const std::string checklist_dir = GetQueryParam(request, "checklist_dir", "");
+    std::optional<core::ChecklistOwnership> ownership_filter;
+    if (!source_name.empty() || !pack.empty() || !checklist_dir.empty()) {
+      ownership_filter = core::ChecklistOwnership{
+          source_name, "", pack, checklist_dir, checklist};
+    }
+    const auto slugs = store.QuerySlugs(checklist, instance_id, std::nullopt, std::nullopt,
+                                        std::nullopt, std::nullopt, ownership_filter);
+    if (slugs.empty()) {
+      return ErrorResponse("NOT_FOUND", "No slugs found for checklist/instance.",
+                           json{{"checklist", checklist}, {"instance_id", instance_id}}, 404);
+    }
+    const auto graph = BuildChecklistGraph(slugs);
+    LogInfo("GET /api/v1/visualizations/graph checklist=" + checklist +
+            " instance=" + instance_id);
+    return OkResponse(ChecklistGraphToJson(graph));
+  };
+
   auto handle_history = [&store](const platform::HttpRequest& request) {
     if (request.path_params.empty()) {
       return ErrorResponse("INVALID_FIELD", "Missing address_id path parameter.", {}, 400);
@@ -5830,6 +5924,109 @@ void ConfigureServer(platform::HttpServer& server, ChecklistStore& store, OAuthS
     }
   };
 
+  auto handle_workspace_visualizations_export = [&store](const platform::HttpRequest& request) {
+    const auto payload = json::parse(request.body, nullptr, false);
+    if (payload.is_discarded() || !payload.is_object()) {
+      return ErrorResponse("INVALID_JSON", "Invalid JSON payload.", {}, 400);
+    }
+    const std::string checklist = TrimString(payload.value("checklist", ""));
+    const std::string instance_id = TrimString(payload.value("instance_id", ""));
+    if (checklist.empty() || instance_id.empty()) {
+      return ErrorResponse("INVALID_FIELD", "checklist and instance_id are required.", {}, 400);
+    }
+    if (!core::IsValidBase32Id(instance_id, 16)) {
+      return ErrorResponse("INVALID_FIELD", "instance_id must be a 16-char Base32 token.",
+                           json{{"instance_id", instance_id}}, 400);
+    }
+
+    std::string source_name = TrimString(payload.value("source_name", ""));
+    std::string pack = TrimString(payload.value("pack", ""));
+    std::string checklist_dir = TrimString(payload.value("checklist_dir", checklist));
+    if (source_name.empty() && pack.empty() && !payload.contains("checklist_dir")) {
+      const auto ownerships = store.ListOwnershipsForInstance(checklist, instance_id);
+      if (ownerships.size() == 1) {
+        source_name = ownerships.front().source_name;
+        pack = ownerships.front().pack;
+        checklist_dir = ownerships.front().checklist_dir;
+      } else if (ownerships.size() > 1) {
+        return ErrorResponse("AMBIGUOUS_CHECKLIST_OWNERSHIP",
+                             "Checklist instance has multiple source/pack owners; specify source_name and pack.",
+                             json{{"checklist", checklist},
+                                  {"instance_id", instance_id},
+                                  {"matches", OwnershipsToJson(ownerships)}},
+                             400);
+      }
+    }
+
+    const auto workspace_roots = LoadChecklistWorkspaceRoots();
+    std::string resolve_error;
+    json resolve_details = json::object();
+    const auto resolved_root =
+        ResolveChecklistRoot(workspace_roots, checklist_dir, pack, source_name, true,
+                             &resolve_error, &resolve_details);
+    if (!resolved_root) {
+      return ErrorResponse("INVALID_FIELD",
+                           resolve_error.empty() ? "Invalid pack or checklist." : resolve_error,
+                           resolve_details, 400);
+    }
+
+    try {
+      json warnings = json::array();
+      const auto ownership = OwnershipFromResolution(*resolved_root, checklist);
+      auto slugs = store.QuerySlugs(checklist, instance_id, std::nullopt, std::nullopt,
+                                    std::nullopt, std::nullopt, ownership);
+      if (slugs.empty()) {
+        slugs = store.QuerySlugs(checklist, instance_id, std::nullopt, std::nullopt,
+                                 std::nullopt, std::nullopt);
+        if (!slugs.empty()) {
+          warnings.push_back(
+              {{"code", "OWNERSHIP_FILTER_EMPTY"},
+               {"message",
+                "No rows had persisted ownership for the requested source/pack; exported legacy unowned rows."},
+               {"details",
+                {{"source_name", resolved_root->source_name},
+                 {"pack", resolved_root->pack},
+                 {"checklist_dir", resolved_root->checklist_dir}}}});
+        }
+      }
+      if (slugs.empty()) {
+        return ErrorResponse("NOT_FOUND", "No slugs found for checklist/instance.",
+                             json{{"checklist", checklist}, {"instance_id", instance_id}}, 404);
+      }
+
+      const auto graph = BuildChecklistGraph(slugs);
+      const json graph_json = ChecklistGraphToJson(graph);
+      const auto output_root = resolved_root->root / "visualizations" / instance_id;
+      const auto json_path = output_root / "graph.json";
+      const auto dot_path = output_root / "section-flow.dot";
+      const auto mermaid_path = output_root / "section-flow.mmd";
+      std::string write_error;
+      if (!WriteUtf8File(json_path, graph_json.dump(2) + "\n", &write_error) ||
+          !WriteUtf8File(dot_path, RenderChecklistGraphDot(graph), &write_error) ||
+          !WriteUtf8File(mermaid_path, RenderChecklistGraphMermaid(graph), &write_error)) {
+        return ErrorResponse("INTERNAL_ERROR", write_error, {}, 500);
+      }
+
+      LogInfo("POST /api/v1/workspace/visualizations/export source=" +
+              resolved_root->source_name + " pack=" + resolved_root->pack +
+              " checklist=" + checklist + " instance=" + instance_id +
+              " -> " + output_root.string());
+      json files = json::array({json_path.string(), dot_path.string(), mermaid_path.string()});
+      return OkResponse(
+          json{{"source_name", resolved_root->source_name},
+               {"source_path", resolved_root->library_root.string()},
+               {"pack", resolved_root->pack},
+               {"checklist_dir", resolved_root->checklist_dir},
+               {"checklist", checklist},
+               {"instance_id", instance_id},
+               {"directory", output_root.string()},
+               {"files", files}},
+          201, warnings);
+    } catch (const std::exception& ex) {
+      return ErrorResponse("INTERNAL_ERROR", ex.what(), {}, 500);
+    }
+  };
+
   auto handle_workspace_asset_pack_export = [](const platform::HttpRequest &request) {
     const auto payload = json::parse(request.body, nullptr, false);
     if (payload.is_discarded()) {
@@ -6076,6 +6273,8 @@ void ConfigureServer(platform::HttpServer& server, ChecklistStore& store, OAuthS
   add_authed(platform::HttpMethod::kPost, "/api/v1/slugs", handle_create_slug);
   add_authed(platform::HttpMethod::kGet, "/api/v1/slugs", handle_slugs);
   add_authed(platform::HttpMethod::kGet, R"(/api/v1/slugs/(.+))", handle_slug);
+  add_authed(platform::HttpMethod::kGet, "/api/v1/visualizations/graph",
+             handle_visualization_graph);
   add_authed(platform::HttpMethod::kGet, R"(/api/v1/checklists/(.+))", handle_checklist);
   add_authed(platform::HttpMethod::kGet, R"(/api/v1/relationships/address/(.+))",
              handle_relationships);
@@ -6105,6 +6304,8 @@ void ConfigureServer(platform::HttpServer& server, ChecklistStore& store, OAuthS
              handle_workspace_markdown_import);
   add_authed(platform::HttpMethod::kPost, "/api/v1/workspace/markdown/export",
              handle_workspace_markdown_export);
+  add_authed(platform::HttpMethod::kPost, "/api/v1/workspace/visualizations/export",
+             handle_workspace_visualizations_export);
   add_authed(platform::HttpMethod::kPost, "/api/v1/workspace/asset-pack/export", handle_workspace_asset_pack_export);
   add_authed(platform::HttpMethod::kPost, "/api/v1/workspace/asset-pack/import", handle_workspace_asset_pack_import);
   add_authed(platform::HttpMethod::kGet, "/api/v1/workspace/scripts",
@@ -6137,6 +6338,8 @@ void ConfigureServer(platform::HttpServer& server, ChecklistStore& store, OAuthS
   server.AddHandler(platform::HttpMethod::kOptions, "/api/v1/checklists", HandleCorsPreflight);
   server.AddHandler(platform::HttpMethod::kOptions, "/api/v1/slugs", HandleCorsPreflight);
   server.AddHandler(platform::HttpMethod::kOptions, R"(/api/v1/slugs/.*)", HandleCorsPreflight);
+  server.AddHandler(platform::HttpMethod::kOptions, "/api/v1/visualizations/graph",
+                    HandleCorsPreflight);
   server.AddHandler(platform::HttpMethod::kOptions, R"(/api/v1/history/.*)", HandleCorsPreflight);
   server.AddHandler(platform::HttpMethod::kOptions, "/api/v1/slugs", HandleCorsPreflight);
   server.AddHandler(platform::HttpMethod::kOptions, R"(/api/v1/slugs/.*)", HandleCorsPreflight);
@@ -6165,6 +6368,8 @@ void ConfigureServer(platform::HttpServer& server, ChecklistStore& store, OAuthS
   server.AddHandler(platform::HttpMethod::kOptions, "/api/v1/workspace/markdown/import",
                     HandleCorsPreflight);
   server.AddHandler(platform::HttpMethod::kOptions, "/api/v1/workspace/markdown/export",
+                    HandleCorsPreflight);
+  server.AddHandler(platform::HttpMethod::kOptions, "/api/v1/workspace/visualizations/export",
                     HandleCorsPreflight);
   server.AddHandler(platform::HttpMethod::kOptions, "/api/v1/workspace/asset-pack/export", HandleCorsPreflight);
   server.AddHandler(platform::HttpMethod::kOptions, "/api/v1/workspace/asset-pack/import", HandleCorsPreflight);

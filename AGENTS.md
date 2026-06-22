@@ -10,8 +10,14 @@
 ## Validation
 
 - Prefer `rg` for search.
-- For C++ changes, run the relevant build and tests. On Windows, start with `cmake --preset windows-gcc-ninja`, `cmake --build --preset windows-gcc-ninja`, and `ctest --preset windows-gcc-ninja --output-on-failure`.
+- For C++ changes, run the relevant build and tests. On Windows, start with `cmake --preset windows-gcc-ninja`; build only the target under test or `stage-windows-runtime`, then run the relevant `ctest` selection. Do not use an unqualified `cmake --build --preset windows-gcc-ninja` for ordinary runtime work: it builds every test executable and produces avoidable local build churn.
 - For documentation-only changes, at least run `scripts/check_text_encoding.ps1`.
+
+## Runtime Packaging
+
+- The normal Windows preset is a compact Release build. It stages the runnable launcher, server, MinGW DLLs, web client, and public checklists to the ignored sibling folder `../Checklist-Assistant-runtime/` through the `stage-windows-runtime` target.
+- Treat `out/` as disposable compiler output. Do not commit, archive, or hand off the CMake build tree. Delete it after staging a verified runtime when disk space matters.
+- Keep private packs outside the repository and runtime staging folder; load them through Portal Settings. A clean runtime folder may be removed and rebuilt without affecting private packs.
 
 ## Public Safety
 

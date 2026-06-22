@@ -31,18 +31,18 @@ cmake --build --preset windows-gcc-ninja
 ctest --preset windows-gcc-ninja --output-on-failure
 ```
 
-For an ad hoc build directory:
+The Windows preset is a compact Release build and stages a portable runtime outside the repository:
 
 ```powershell
-cmake -S . -B build -G Ninja -DCHAX_ENFORCE_CLANG_TIDY=OFF
-cmake --build build
-ctest --test-dir build --output-on-failure --label-regex smoke
+cmake --build --preset windows-gcc-ninja --target stage-windows-runtime
 ```
+
+The staged runtime is written to the sibling folder `../Checklist-Assistant-runtime/`. Build and test output remains ignored under `out/` and can be deleted after staging.
 
 ## Run Locally
 
 ```powershell
-.\build\checklist_assistant_server.exe start --host 127.0.0.1 --port 8080 --no-whisper
+..\Checklist-Assistant-runtime\checklist_assistant.exe --host 127.0.0.1 --port 8080 --no-browser
 ```
 
 Then open `http://127.0.0.1:8080/ui/`.

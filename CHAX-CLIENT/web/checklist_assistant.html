@@ -261,6 +261,101 @@
       font-size: 12px;
     }
     .danger-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+    .view-tabs { margin-top: 4px; }
+    .view-tab.active { background: var(--accent); color: var(--accent-ink); border-color: transparent; }
+    .view-hidden { display: none; }
+    .flow-summary { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
+    .flow-summary .chip { font-variant-numeric: tabular-nums; }
+    .flow-canvas { display: grid; gap: 12px; overflow-x: auto; }
+    .flow-lane {
+      min-width: 560px;
+      border-top: 2px solid var(--border);
+      padding-top: 8px;
+    }
+    .flow-lane-title {
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 700;
+      text-transform: uppercase;
+    }
+    .flow-cards {
+      display: flex;
+      align-items: stretch;
+      gap: 10px;
+      padding: 8px 0 4px;
+    }
+    .flow-card {
+      width: 210px;
+      flex: 0 0 210px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: var(--table-row-bg);
+      padding: 10px;
+    }
+    .flow-card.decision { border-color: var(--warn); }
+    .flow-card.terminal { border-color: var(--muted); }
+    .flow-card.metric { border-color: var(--accent-cool-strong); }
+    .flow-card h3 { margin: 0 0 6px; font-size: 14px; }
+    .flow-card p { margin: 4px 0; font-size: 12px; color: var(--muted); overflow-wrap: anywhere; }
+    .flow-edge-list { margin: 0; padding: 0; list-style: none; display: grid; gap: 6px; }
+    .flow-edge-list li {
+      border-left: 3px solid var(--accent-cool-strong);
+      padding: 5px 8px;
+      background: var(--details-panel-bg);
+      color: var(--muted-strong);
+      font-size: 12px;
+      overflow-wrap: anywhere;
+    }
+    .flow-edge-list li.external { border-left-color: var(--warn); }
+    .flow-toolbar { margin-bottom: 12px; }
+    .flow-toolbar select { min-width: 220px; }
+    .flow-toolbar input { min-width: 220px; }
+    .flow-overview-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+      gap: 10px;
+    }
+    .flow-overview-card {
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: var(--table-row-bg);
+      padding: 10px;
+    }
+    .flow-overview-card h3 { margin: 0 0 8px; font-size: 14px; overflow-wrap: anywhere; }
+    .flow-metrics { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
+    .flow-metric { color: var(--muted); font-size: 12px; }
+    .flow-metric strong { display: block; color: var(--text); font-size: 16px; }
+    .flow-hierarchy { display: grid; gap: 8px; }
+    .flow-hierarchy-row {
+      display: grid;
+      grid-template-columns: minmax(170px, 1fr) minmax(150px, 0.8fr) minmax(170px, 1fr);
+      gap: 8px;
+      align-items: center;
+      min-width: 620px;
+    }
+    .flow-hierarchy-cell {
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: var(--table-row-bg);
+      padding: 8px;
+      font-size: 12px;
+      overflow-wrap: anywhere;
+    }
+    .flow-hierarchy-predicate { background: var(--details-panel-bg); color: var(--accent-cool-strong); text-align: center; }
+    .flow-graph-map { overflow: auto; border: 1px solid var(--border); border-radius: 8px; background: var(--details-panel-bg); }
+    .flow-graph-map svg { display: block; min-width: 960px; }
+    .flow-graph-map .lane { fill: var(--panel); stroke: var(--border); }
+    .flow-graph-map .edge { fill: none; stroke: var(--accent-cool-strong); stroke-width: 1.5; opacity: 0.65; }
+    .flow-graph-map .edge.external { stroke: var(--warn); stroke-dasharray: 4 4; }
+    .flow-graph-map .node { fill: var(--table-row-bg); stroke: var(--border); }
+    .flow-graph-map .node.decision { stroke: var(--warn); }
+    .flow-graph-map .node.terminal { stroke: var(--muted); }
+    .flow-graph-map .node.metric { stroke: var(--accent-cool-strong); }
+    .flow-graph-map text { fill: var(--text); font-family: var(--font-sans); font-size: 12px; }
+    .flow-graph-map .lane-label { fill: var(--muted); font-weight: 700; font-size: 12px; }
+    .flow-lint { display: grid; gap: 8px; }
+    .flow-lint-item { border-left: 3px solid var(--warn); background: var(--details-panel-bg); padding: 8px 10px; font-size: 12px; }
+    .flow-lint-item.info { border-left-color: var(--accent-cool-strong); }
   </style>
 </head>
 <body>
@@ -303,9 +398,13 @@
       <label><input type="checkbox" id="wrapRowTextToggle"> Wrap row text</label>
       <span class="mode-hint" id="modeHint"></span>
     </div>
+    <div class="bar view-tabs" role="tablist" aria-label="Checklist views">
+      <button class="secondary view-tab active" id="checklistViewTab" type="button" role="tab" aria-selected="true">Checklist</button>
+      <button class="secondary view-tab" id="flowViewTab" type="button" role="tab" aria-selected="false">Flow</button>
+    </div>
   </div>
 
-  <div class="panel">
+  <div class="panel" id="checklistView">
     <div class="bar utility-bar">
       <details>
         <summary>Markdown workspace</summary>
@@ -402,6 +501,33 @@
     </table>
   </div>
 
+  <div class="panel view-hidden" id="flowView">
+    <div class="bar bar-split">
+      <div class="title">Flow</div>
+      <div class="top-controls">
+        <button class="secondary" id="refreshFlowBtn" type="button" title="Refresh the selected checklist flow">Refresh</button>
+        <button id="exportFlowBtn" type="button" title="Export graph JSON, GraphViz DOT, and Mermaid to the checklist asset pack">Export</button>
+      </div>
+    </div>
+    <div class="bar flow-toolbar">
+      <label for="flowModeSelect">View</label>
+      <select id="flowModeSelect">
+        <option value="swimlanes">Section swimlanes</option>
+        <option value="hierarchy">Hierarchy relationships</option>
+        <option value="full">Full concentrated graph</option>
+        <option value="sections">Section overview</option>
+        <option value="predicates">Predicate overview</option>
+        <option value="external">External targets</option>
+        <option value="lint">Relationship lint</option>
+      </select>
+      <label for="flowFilterInput">Filter</label>
+      <input id="flowFilterInput" type="search" placeholder="procedure, section, or predicate">
+    </div>
+    <div class="flow-summary" id="flowSummary"></div>
+    <div class="flow-canvas" id="flowCanvas"></div>
+    <ul class="flow-edge-list" id="flowEdges"></ul>
+  </div>
+
   <button class="secondary session-toggle" id="entityToggle">Session</button>
   <div class="session-panel" id="entityPanel">
     <h4>Session / Entity</h4>
@@ -451,7 +577,7 @@
   <script src="checklist_prototype_common.js"></script>
   <script>
     checklistPrototype.init({
-      variantLabel: "0.0.1-1.2.4",
+      variantLabel: "0.0.1-1.2.5",
       defaultMode: "user",
       defaultEdit: false,
     });

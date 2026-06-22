@@ -46,14 +46,16 @@ bool HasRuntimeAssets(const std::filesystem::path& dir) {
 }
 
 std::filesystem::path ResolveRuntimeRoot(const std::filesystem::path& launcher_dir) {
-  if (HasRuntimeAssets(launcher_dir)) {
-    return launcher_dir;
-  }
-  if (launcher_dir.has_parent_path()) {
-    const auto parent = launcher_dir.parent_path();
-    if (HasRuntimeAssets(parent)) {
-      return parent;
+  std::filesystem::path candidate = launcher_dir;
+  for (int depth = 0; depth <= 4 && !candidate.empty(); ++depth) {
+    if (HasRuntimeAssets(candidate)) {
+      return candidate;
     }
+    const auto parent = candidate.parent_path();
+    if (parent == candidate) {
+      break;
+    }
+    candidate = parent;
   }
   return launcher_dir;
 }

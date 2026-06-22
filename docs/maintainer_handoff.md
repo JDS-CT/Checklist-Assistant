@@ -31,6 +31,12 @@ This repository was seeded as a public-safe starting point from an internal deve
 4. Run a final public-safety scan for private names, archive files, binaries, generated output, and local state.
 5. Make the first commit only after that review is clean.
 
+## Windows Runtime Workflow
+
+The normal Windows preset is intentionally a compact Release build. Configure with `cmake --preset windows-gcc-ninja`, then use `cmake --build --preset windows-gcc-ninja --target stage-windows-runtime` to stage a portable runtime in the ignored sibling folder `../Checklist-Assistant-runtime/`.
+
+Do not use an unqualified preset build as the normal launch path: it builds every test executable and can make local compiler output much larger than the runtime. The ignored `out/` tree is disposable; verify the staged runtime, then remove `out/` when it is no longer needed. Keep private checklist packs outside both the repository and runtime folder and load them through Portal Settings.
+
 ## Licensing Context
 
 - Root implementation code is MIT licensed through `LICENSE`.

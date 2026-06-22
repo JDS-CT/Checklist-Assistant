@@ -1,6 +1,6 @@
 ---
-- Version: 0.0.2-1.1.1
-- Date: 2026-05-13T12:00:00-05:00
+- Version: 0.0.2-1.1.2
+- Date: 2026-06-22T12:00:00-04:00
 - Project: Checklist Assistant
 - Repository: https://github.com/JDS-CT/checklist-assistant.git
 - Code-License: MIT (reference implementation code)
@@ -68,6 +68,7 @@ The "Checklist Assistant" name and related project identity marks are not licens
   - [7.5 REST API: Relationships](#75-rest-api-relationships)
   - [7.6 History, Instances, and Workspace Discovery](#76-rest-api-history-and-instance-catalog)
   - [7.7 Evaluation](#77-rest-api-evaluation-read-only)
+    - [7.7.3 Derived Checklist Graphs](#773-derived-checklist-graphs)
   - [7.9 MCP Tools](#79-mcp-tools)
 - [8. Relationship Model](#8-relationship-model)
 - [9. Relationship Predicate Semantics and Evaluation Model](#9-relationship-predicate-semantics-and-evaluation-model)
@@ -2575,6 +2576,25 @@ Response:
 ```
 
 This endpoint is intended for visualization, diagnostics, and agent reasoning.
+
+#### 7.7.3 Derived Checklist Graphs
+
+`GET /api/v1/visualizations/graph?checklist=<checklist>&instance_id=<instance_id>` returns a read-only, versioned graph projection for one canonical checklist instance. The reference response schema is `chax-graph-view-v1`.
+
+The projection contains canonical row fields needed for labels and inspection, plus derived `spec_kind`, `visual_shape`, incoming/outgoing relationship counts, and graph edges. `relationship` edges are canonical address-level relationship triples. `checklistOrder` edges are derived solely from canonical `address_order` and exist only to make an execution sequence legible.
+
+- Clients MUST obtain the projection through the API and MUST NOT read or write SQLite directly.
+- `checklistOrder` edges MUST NOT be treated as relationship predicates and MUST NOT be written back as relationships.
+- Layout, card shape, swimlanes, graph summaries, and diagnostics are derived view data. They MUST NOT become required checklist row fields.
+- Unknown targets MUST be represented as external edges, not silently discarded. Lineage predicates (`slugPredecessor`, `slugSuccessor`, `addressPredecessor`, `addressSuccessor`) MUST be marked as lineage metadata rather than generic workflow arrows.
+
+The reference implementation also exposes `POST /api/v1/workspace/visualizations/export`. The caller supplies `checklist`, `instance_id`, and optional workspace ownership selectors (`source_name`, `pack`, `checklist_dir`). It writes deterministic `graph.json`, GraphViz DOT, and Mermaid files under:
+
+```text
+checklists/<pack>/<checklist>/visualizations/<instance_id>/
+```
+
+Each export overwrites that instance's stable view files. Opening or refreshing a client graph view MUST NOT create runtime files.
 
 ### 7.8 JSON-RPC API
 
@@ -5210,6 +5230,7 @@ The reference implementation uses `checklists/<pack>/<checklist>/` as the canoni
 - `templates/tex/` and `templates/html/` contain report templates. Fillable PDF/FDF support may use `templates/report.pdf` and `templates/report.fdf`.
 - `media/` and `img/` contain portable visual assets referenced by checklist instructions or report templates. Relative paths are preferred.
 - `scripts/` contains checklist-local automation plus optional `scripts.json` metadata as described in Section 13.9.
+- `visualizations/<instance_id>/` contains explicit, derived graph exports for that checklist instance. These files are not a second source of truth and are replaced on subsequent exports for the same instance.
 - `reports/`, `saves/`, and `logs/` are runtime artifact folders owned by the checklist pack. They are useful for local audit/debug work but are often ignored by version control.
 - `docs/` may contain checklist-local operator notes, customer/vendor references, connector examples, generated manuals, or other material that should travel with the checklist but is not part of the public project documentation set.
 
