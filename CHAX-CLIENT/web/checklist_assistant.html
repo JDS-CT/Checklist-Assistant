@@ -292,9 +292,9 @@
       background: var(--table-row-bg);
       padding: 10px;
     }
-    .flow-card.decision { border-color: var(--warn); }
-    .flow-card.terminal { border-color: var(--muted); }
-    .flow-card.metric { border-color: var(--accent-cool-strong); }
+    .flow-card.decision { border-color: var(--warn); border-radius: 0; clip-path: polygon(50% 0, 100% 18%, 100% 82%, 50% 100%, 0 82%, 0 18%); padding: 12px 20px; }
+    .flow-card.terminal { border-color: var(--muted); border-radius: 999px; }
+    .flow-card.metric { border-color: var(--accent-cool-strong); border-left: 5px double var(--accent-cool-strong); border-radius: 2px 8px 8px 2px; }
     .flow-card h3 { margin: 0 0 6px; font-size: 14px; }
     .flow-card p { margin: 4px 0; font-size: 12px; color: var(--muted); overflow-wrap: anywhere; }
     .flow-edge-list { margin: 0; padding: 0; list-style: none; display: grid; gap: 6px; }
@@ -356,6 +356,53 @@
     .flow-lint { display: grid; gap: 8px; }
     .flow-lint-item { border-left: 3px solid var(--warn); background: var(--details-panel-bg); padding: 8px 10px; font-size: 12px; }
     .flow-lint-item.info { border-left-color: var(--accent-cool-strong); }
+    .flow-workspace {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(250px, 320px);
+      gap: 12px;
+      align-items: start;
+    }
+    .flow-main { min-width: 0; }
+    .flow-inspector {
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: var(--details-panel-bg);
+      min-height: 180px;
+      padding: 10px;
+      position: sticky;
+      top: 12px;
+    }
+    .flow-inspector h3 { margin: 0 0 10px; font-size: 14px; }
+    .flow-inspector .meta-line { display: grid; grid-template-columns: 82px minmax(0, 1fr); gap: 8px; margin: 5px 0; font-size: 12px; }
+    .flow-inspector .meta-line strong { color: var(--muted); }
+    .flow-inspector pre { max-height: 180px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; }
+    .flow-card, .flow-hierarchy-row, .flow-edge-list li, .flow-graph-map [data-flow-node], .flow-graph-map [data-flow-edge-key] { cursor: context-menu; }
+    .flow-card.trace-hit, .flow-hierarchy-row.trace-hit, .flow-edge-list li.trace-hit, .flow-graph-map .trace-hit { outline: 2px solid var(--warn); outline-offset: 2px; opacity: 1; }
+    .flow-card.trace-dim, .flow-hierarchy-row.trace-dim, .flow-edge-list li.trace-dim, .flow-graph-map .trace-dim { opacity: 0.16; }
+    .flow-lanes-visual { position: relative; min-width: 560px; }
+    .flow-lanes-visual .flow-card { position: relative; z-index: 2; }
+    .flow-lines { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 1; }
+    .flow-lines path { fill: none; stroke: var(--accent-cool-strong); stroke-width: 1.4; opacity: 0.72; pointer-events: stroke; cursor: context-menu; }
+    .flow-lines path.external { stroke: var(--warn); stroke-dasharray: 4 4; }
+    .flow-lines path.trace-hit { stroke: var(--warn); stroke-width: 3; opacity: 1; }
+    .flow-lines path.trace-dim { opacity: 0.08; }
+    #flowContextMenu {
+      position: fixed;
+      z-index: 40;
+      display: none;
+      min-width: 170px;
+      padding: 5px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: var(--panel-glass-strong);
+      box-shadow: var(--shadow-strong);
+    }
+    #flowContextMenu button { display: block; width: 100%; min-height: 30px; padding: 0 9px; text-align: left; background: transparent; color: var(--text); }
+    #flowContextMenu button:hover { background: var(--accent-soft); }
+    @media (max-width: 900px) {
+      .flow-workspace { grid-template-columns: 1fr; }
+      .flow-inspector { position: static; }
+    }
   </style>
 </head>
 <body>
@@ -520,12 +567,24 @@
         <option value="external">External targets</option>
         <option value="lint">Relationship lint</option>
       </select>
-      <label for="flowFilterInput">Filter</label>
-      <input id="flowFilterInput" type="search" placeholder="procedure, section, or predicate">
+      <label for="flowFilterInput">Trace</label>
+      <input id="flowFilterInput" type="search" placeholder="predicate, slug, or procedure">
     </div>
-    <div class="flow-summary" id="flowSummary"></div>
-    <div class="flow-canvas" id="flowCanvas"></div>
-    <ul class="flow-edge-list" id="flowEdges"></ul>
+    <div class="flow-workspace">
+      <div class="flow-main">
+        <div class="flow-summary" id="flowSummary"></div>
+        <div class="flow-canvas" id="flowCanvas"></div>
+        <ul class="flow-edge-list" id="flowEdges"></ul>
+      </div>
+      <aside class="flow-inspector" id="flowInspector"><h3>Inspect</h3><div class="note">Select or right-click a node or relationship.</div></aside>
+    </div>
+  </div>
+
+  <div id="flowContextMenu">
+    <button type="button" data-flow-action="drill">Drill down</button>
+    <button type="button" data-flow-action="family">Show family</button>
+    <button type="button" data-flow-action="slug">Highlight slug ID</button>
+    <button type="button" data-flow-action="copy">Copy metadata</button>
   </div>
 
   <button class="secondary session-toggle" id="entityToggle">Session</button>

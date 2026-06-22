@@ -416,6 +416,8 @@
     const flowSummary = document.getElementById("flowSummary");
     const flowCanvas = document.getElementById("flowCanvas");
     const flowEdges = document.getElementById("flowEdges");
+    const flowInspector = document.getElementById("flowInspector");
+    const flowContextMenu = document.getElementById("flowContextMenu");
     const instanceSelect = document.getElementById("instanceSelect");
     const instanceFilter = document.getElementById("instanceFilter");
     const instanceCopyBtn = document.getElementById("instanceCopyBtn");
@@ -488,6 +490,8 @@
     let activeView = "checklist";
     let flowGraph = null;
     let flowMode = "swimlanes";
+    let flowSelectedMeta = null;
+    let flowFocus = null;
 
     const state = {
       mode: config?.defaultMode || "user",
@@ -3257,6 +3261,10 @@
       return (Array.isArray(graph?.edges) ? graph.edges : []).filter((edge) => edge.kind === "relationship");
     }
 
+    function flowEdgeKey(edge) {
+      return [edge?.source_address_id || "", edge?.predicate || "", edge?.target_address_id || ""].join("\u001f");
+    }
+
     function flowNodeName(node, fallback) {
       return node?.procedure || fallback || "(unknown)";
     }
@@ -3267,7 +3275,7 @@
         : "action";
       const status = node.status ? `Status: ${node.status}` : "Status: not set";
       return `
-        <article class="flow-card ${shape}" title="${escapeHtmlAttr(node.address_id || "")}">
+        <article class="flow-card ${shape}" data-flow-node="${escapeHtmlAttr(node.address_id || "")}" tabindex="0" role="button" title="${escapeHtmlAttr(node.address_id || "")}">
           <h3>${escapeHtml(flowNodeName(node, "(unnamed procedure)"))}</h3>
           <p>${escapeHtml(node.action || "")}</p>
           <p>${escapeHtml(node.spec || "")}</p>
@@ -3281,7 +3289,7 @@
           const source = flowNodeName(nodeByAddress.get(edge.source_address_id), edge.source_address_id);
           const target = flowNodeName(nodeByAddress.get(edge.target_address_id), edge.target_address_id || "(external)");
           const external = edge.is_external ? "external" : "";
-          return `<li class="${external}">${escapeHtml(source)} &rarr; <strong>${escapeHtml(
+          return `<li class="${external}" data-flow-edge-key="${escapeHtmlAttr(flowEdgeKey(edge))}" tabindex="0" role="button">${escapeHtml(source)} &rarr; <strong>${escapeHtml(
             edge.predicate || ""
           )}</strong> &rarr; ${escapeHtml(target)}</li>`;
         })
@@ -3298,13 +3306,13 @@
         if (!sections.has(key)) sections.set(key, []);
         sections.get(key).push(node);
       });
-      flowCanvas.innerHTML = Array.from(sections.entries())
+      flowCanvas.innerHTML = `<div class="flow-lanes-visual">${Array.from(sections.entries())
         .map(([section, rows]) => `
           <section class="flow-lane">
             <div class="flow-lane-title">${escapeHtml(section)}</div>
             <div class="flow-cards">${rows.map(flowNodeCard).join("")}</div>
           </section>`)
-        .join("");
+        .join("")}</div>`;
     }
 
     function renderFlowHierarchy(edges, nodeByAddress) {
@@ -3316,7 +3324,7 @@
             ? `${target.section || ""}: ${flowNodeName(target)}`
             : `${edge.external_category === "legacy" ? "Legacy" : "External"}: ${edge.target_address_id}`;
           return `
-            <div class="flow-hierarchy-row">
+            <div class="flow-hierarchy-row" data-flow-edge-key="${escapeHtmlAttr(flowEdgeKey(edge))}" tabindex="0" role="button">
               <div class="flow-hierarchy-cell">${escapeHtml(
                 `${source?.section || ""}: ${flowNodeName(source, edge.source_address_id)}`
               )}</div>
@@ -3329,7 +3337,10 @@
 
     function renderFlowGraphMap(nodes, edges, nodeByAddress) {
       const maxNodes = 250;
-      const visibleNodes = nodes.slice(0, maxNodes);
+      const trace = flowTraceState();
+      const visibleNodes = [...nodes]
+        .sort((left, right) => Number(trace.hitNodes.has(right.address_id)) - Number(trace.hitNodes.has(left.address_id)))
+        .slice(0, maxNodes);
       const sections = new Map();
       visibleNodes.forEach((node) => {
         const key = node.section || "(no section)";
@@ -3362,7 +3373,7 @@
         .map((edge) => {
           const source = positions.get(edge.source_address_id);
           const target = positions.get(edge.target_address_id);
-          return `<path class="edge" d="M ${source.x + 160} ${source.y + 22} C ${source.x + 174} ${source.y + 22}, ${target.x - 14} ${target.y + 22}, ${target.x} ${target.y + 22}"></path>`;
+          return `<path class="edge" data-flow-edge-key="${escapeHtmlAttr(flowEdgeKey(edge))}" d="M ${source.x + 160} ${source.y + 22} C ${source.x + 174} ${source.y + 22}, ${target.x - 14} ${target.y + 22}, ${target.x} ${target.y + 22}"></path>`;
         })
         .join("");
       const svgNodes = visibleNodes
@@ -3372,9 +3383,17 @@
             ? node.visual_shape
             : "action";
           const label = flowNodeName(node, "(unnamed)").slice(0, 26);
+          let geometry = `<rect class="node ${shape}" x="${position.x}" y="${position.y}" width="160" height="46" rx="6"></rect>`;
+          if (shape === "decision") {
+            geometry = `<polygon class="node ${shape}" points="${position.x + 80},${position.y} ${position.x + 160},${position.y + 23} ${position.x + 80},${position.y + 46} ${position.x},${position.y + 23}"></polygon>`;
+          } else if (shape === "terminal") {
+            geometry = `<ellipse class="node ${shape}" cx="${position.x + 80}" cy="${position.y + 23}" rx="80" ry="23"></ellipse>`;
+          } else if (shape === "metric") {
+            geometry = `<path class="node ${shape}" d="M ${position.x} ${position.y} H ${position.x + 148} L ${position.x + 160} ${position.y + 12} V ${position.y + 46} H ${position.x} Z"></path>`;
+          }
           return `
-            <g title="${escapeHtmlAttr(node.address_id || "")}">
-              <rect class="node ${shape}" x="${position.x}" y="${position.y}" width="160" height="46" rx="6"></rect>
+            <g data-flow-node="${escapeHtmlAttr(node.address_id || "")}" tabindex="0" role="button" title="${escapeHtmlAttr(node.address_id || "")}">
+              ${geometry}
               <text x="${position.x + 8}" y="${position.y + 20}">${escapeHtml(label)}</text>
               <text x="${position.x + 8}" y="${position.y + 35}">${escapeHtml((node.status || "Not set").slice(0, 22))}</text>
             </g>`;
@@ -3402,7 +3421,7 @@
       flowCanvas.innerHTML = `<div class="flow-hierarchy">${edges
         .filter((edge) => edge.is_external)
         .map((edge) => `
-          <div class="flow-hierarchy-row">
+          <div class="flow-hierarchy-row" data-flow-edge-key="${escapeHtmlAttr(flowEdgeKey(edge))}" tabindex="0" role="button">
             <div class="flow-hierarchy-cell">${escapeHtml(
               flowNodeName(nodeByAddress.get(edge.source_address_id), edge.source_address_id)
             )}</div>
@@ -3447,22 +3466,214 @@
       flowEdges.innerHTML = "";
     }
 
+    function flowNodeMeta(addressId) {
+      const node = (flowGraph?.nodes || []).find((item) => item.address_id === addressId);
+      return node ? { type: "node", key: addressId, raw: node } : null;
+    }
+
+    function flowEdgeMeta(key) {
+      const edge = flowRelationshipEdges(flowGraph).find((item) => flowEdgeKey(item) === key);
+      return edge ? { type: "edge", key, raw: edge } : null;
+    }
+
+    function flowMetaFromElement(element) {
+      const nodeElement = element.closest("[data-flow-node]");
+      if (nodeElement) return flowNodeMeta(nodeElement.dataset.flowNode || "");
+      const edgeElement = element.closest("[data-flow-edge-key]");
+      if (edgeElement) return flowEdgeMeta(edgeElement.dataset.flowEdgeKey || "");
+      return null;
+    }
+
+    function flowMetaText(meta) {
+      if (!meta) return "";
+      if (meta.type === "node") return JSON.stringify(meta.raw, null, 2);
+      const nodes = new Map((flowGraph?.nodes || []).map((node) => [node.address_id, node]));
+      const edge = meta.raw;
+      return JSON.stringify({
+        source: flowNodeName(nodes.get(edge.source_address_id), edge.source_address_id),
+        predicate: edge.predicate,
+        target: flowNodeName(nodes.get(edge.target_address_id), edge.target_address_id),
+        kind: edge.kind,
+        is_lineage: edge.is_lineage,
+        is_external: edge.is_external,
+        external_category: edge.external_category,
+      }, null, 2);
+    }
+
+    function inspectFlowMeta(meta) {
+      flowSelectedMeta = meta;
+      if (!flowInspector) return;
+      if (!meta) {
+        flowInspector.innerHTML = '<h3>Inspect</h3><div class="note">Select or right-click a node or relationship.</div>';
+        return;
+      }
+      if (meta.type === "node") {
+        const node = meta.raw;
+        flowInspector.innerHTML = [
+          '<h3>Inspect Node</h3>',
+          `<div class="meta-line"><strong>Procedure</strong><span>${escapeHtml(flowNodeName(node))}</span></div>`,
+          `<div class="meta-line"><strong>Slug</strong><span>${escapeHtml(node.slug_id || "")}</span></div>`,
+          `<div class="meta-line"><strong>Section</strong><span>${escapeHtml(node.section || "")}</span></div>`,
+          `<div class="meta-line"><strong>Action</strong><span>${escapeHtml(node.action || "")}</span></div>`,
+          `<div class="meta-line"><strong>Spec</strong><span>${escapeHtml(node.spec || "")}</span></div>`,
+          `<div class="meta-line"><strong>Incoming</strong><span>${escapeHtml(String(node.incoming_relationship_count || 0))}</span></div>`,
+          `<div class="meta-line"><strong>Outgoing</strong><span>${escapeHtml(String(node.outgoing_relationship_count || 0))}</span></div>`,
+          node.instructions ? `<pre>${escapeHtml(node.instructions)}</pre>` : "",
+        ].join("");
+        return;
+      }
+      const edge = meta.raw;
+      const nodeByAddress = new Map((flowGraph?.nodes || []).map((node) => [node.address_id, node]));
+      flowInspector.innerHTML = [
+        '<h3>Inspect Relationship</h3>',
+        `<div class="meta-line"><strong>Source</strong><span>${escapeHtml(flowNodeName(nodeByAddress.get(edge.source_address_id), edge.source_address_id))}</span></div>`,
+        `<div class="meta-line"><strong>Predicate</strong><span>${escapeHtml(edge.predicate || "")}</span></div>`,
+        `<div class="meta-line"><strong>Target</strong><span>${escapeHtml(flowNodeName(nodeByAddress.get(edge.target_address_id), edge.target_address_id))}</span></div>`,
+        `<div class="meta-line"><strong>Category</strong><span>${escapeHtml(edge.external_category || "local")}</span></div>`,
+        `<pre>${escapeHtml(flowMetaText(meta))}</pre>`,
+      ].join("");
+    }
+
+    function showFlowContextMenu(x, y) {
+      if (!flowContextMenu) return;
+      flowContextMenu.style.left = `${x}px`;
+      flowContextMenu.style.top = `${y}px`;
+      flowContextMenu.style.display = "block";
+    }
+
+    function hideFlowContextMenu() {
+      if (flowContextMenu) flowContextMenu.style.display = "none";
+    }
+
+    function focusForFlowMeta(meta) {
+      if (!meta) return null;
+      if (meta.type === "node") return { type: "node", address_id: meta.raw.address_id };
+      return { type: "predicate", predicate: meta.raw.predicate };
+    }
+
+    function flowTraceState() {
+      const nodes = Array.isArray(flowGraph?.nodes) ? flowGraph.nodes : [];
+      const edges = flowRelationshipEdges(flowGraph);
+      const query = (flowFilterInput?.value || "").trim().toLowerCase();
+      const hitNodes = new Set();
+      const hitEdges = new Set();
+      const nodeMatches = (node) => [
+        node.address_id,
+        node.slug_id,
+        node.section,
+        node.procedure,
+        node.action,
+        node.spec,
+        node.status,
+      ].join(" ").toLowerCase().includes(query);
+      if (query) {
+        nodes.filter(nodeMatches).forEach((node) => hitNodes.add(node.address_id));
+        edges.forEach((edge) => {
+          const predicateMatches = String(edge.predicate || "").toLowerCase().includes(query);
+          if (predicateMatches || hitNodes.has(edge.source_address_id) || hitNodes.has(edge.target_address_id)) {
+            hitEdges.add(flowEdgeKey(edge));
+            hitNodes.add(edge.source_address_id);
+            hitNodes.add(edge.target_address_id);
+          }
+        });
+      }
+      if (flowFocus?.type === "node") {
+        edges.forEach((edge) => {
+          if (edge.source_address_id === flowFocus.address_id || edge.target_address_id === flowFocus.address_id) {
+            hitEdges.add(flowEdgeKey(edge));
+            hitNodes.add(edge.source_address_id);
+            hitNodes.add(edge.target_address_id);
+          }
+        });
+        hitNodes.add(flowFocus.address_id);
+      } else if (flowFocus?.type === "predicate") {
+        edges.forEach((edge) => {
+          if (edge.predicate === flowFocus.predicate) {
+            hitEdges.add(flowEdgeKey(edge));
+            hitNodes.add(edge.source_address_id);
+            hitNodes.add(edge.target_address_id);
+          }
+        });
+      }
+      return { active: Boolean(query || flowFocus), hitNodes, hitEdges };
+    }
+
+    function applyFlowTrace() {
+      const trace = flowTraceState();
+      const apply = (element, hit) => {
+        element.classList.toggle("trace-hit", trace.active && hit);
+        element.classList.toggle("trace-dim", trace.active && !hit);
+      };
+      document.querySelectorAll("[data-flow-node]").forEach((element) => {
+        apply(element, trace.hitNodes.has(element.dataset.flowNode || ""));
+      });
+      document.querySelectorAll("[data-flow-edge-key]").forEach((element) => {
+        apply(element, trace.hitEdges.has(element.dataset.flowEdgeKey || ""));
+      });
+    }
+
+    function drawFlowSwimlaneLines() {
+      const visual = flowCanvas?.querySelector(".flow-lanes-visual");
+      if (!visual || !flowGraph) return;
+      let svg = visual.querySelector(".flow-lines");
+      if (!svg) {
+        svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+        svg.classList.add("flow-lines");
+        visual.prepend(svg);
+      }
+      const rect = visual.getBoundingClientRect();
+      svg.setAttribute("viewBox", `0 0 ${visual.scrollWidth} ${visual.scrollHeight}`);
+      svg.setAttribute("width", visual.scrollWidth);
+      svg.setAttribute("height", visual.scrollHeight);
+      svg.innerHTML = "";
+      const cards = new Map(Array.from(visual.querySelectorAll("[data-flow-node]")).map((card) => [card.dataset.flowNode, card]));
+      flowRelationshipEdges(flowGraph).forEach((edge) => {
+        const source = cards.get(edge.source_address_id);
+        const target = cards.get(edge.target_address_id);
+        if (!source || !target) return;
+        const sourceRect = source.getBoundingClientRect();
+        const targetRect = target.getBoundingClientRect();
+        const start = { x: sourceRect.right - rect.left, y: sourceRect.top + sourceRect.height / 2 - rect.top };
+        const end = { x: targetRect.left - rect.left, y: targetRect.top + targetRect.height / 2 - rect.top };
+        const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+        path.dataset.flowEdgeKey = flowEdgeKey(edge);
+        path.setAttribute("d", `M ${start.x} ${start.y} C ${start.x + 34} ${start.y}, ${end.x - 34} ${end.y}, ${end.x} ${end.y}`);
+        path.setAttribute("title", edge.predicate || "relationship");
+        if (edge.is_external) path.classList.add("external");
+        svg.append(path);
+      });
+    }
+
+    function wireFlowInteractions() {
+      const interactive = [
+        ...(flowCanvas?.querySelectorAll("[data-flow-node], [data-flow-edge-key]") || []),
+        ...(flowEdges?.querySelectorAll("[data-flow-edge-key]") || []),
+      ];
+      interactive.forEach((element) => {
+        const inspect = () => inspectFlowMeta(flowMetaFromElement(element));
+        element.addEventListener("click", inspect);
+        element.addEventListener("contextmenu", (event) => {
+          event.preventDefault();
+          inspect();
+          showFlowContextMenu(event.clientX, event.clientY);
+        });
+        element.addEventListener("keydown", (event) => {
+          if (event.key === "Enter" || event.key === " ") {
+            event.preventDefault();
+            inspect();
+          }
+        });
+      });
+    }
+
     function renderFlowGraph(graph) {
       if (!flowSummary || !flowCanvas || !flowEdges) return;
       const allNodes = Array.isArray(graph?.nodes) ? graph.nodes : [];
       const allEdges = flowRelationshipEdges(graph);
       const summary = graph?.summary || {};
-      const filter = (flowFilterInput?.value || "").trim().toLowerCase();
-      const nodeMatches = (node) => !filter || [node.section, node.procedure, node.action, node.spec, node.status]
-        .join(" ").toLowerCase().includes(filter);
-      const nodes = allNodes.filter(nodeMatches);
+      const nodes = allNodes;
       const nodeByAddress = new Map(allNodes.map((node) => [node.address_id, node]));
-      const edges = allEdges.filter((edge) => {
-        if (!filter) return true;
-        const source = nodeByAddress.get(edge.source_address_id);
-        const target = nodeByAddress.get(edge.target_address_id);
-        return nodeMatches(source || {}) || nodeMatches(target || {}) || String(edge.predicate || "").toLowerCase().includes(filter);
-      });
+      const edges = allEdges;
       flowSummary.innerHTML = [
         `<span class="chip">${escapeHtml(String(summary.sections ?? new Set(nodes.map((node) => node.section)).size))} sections</span>`,
         `<span class="chip">${escapeHtml(String(nodes.length))} rows</span>`,
@@ -3470,7 +3681,7 @@
         `<span class="chip">${escapeHtml(String(edges.filter((edge) => edge.is_external).length))} external</span>`,
       ].join("");
       if (!nodes.length) {
-        flowCanvas.innerHTML = '<div class="note">No rows match this flow filter.</div>';
+        flowCanvas.innerHTML = '<div class="note">No checklist rows are available for this instance.</div>';
         flowEdges.innerHTML = "";
         return;
       }
@@ -3539,6 +3750,11 @@
         renderFlowSwimlanes(nodes);
         renderFlowEdgeList(edges, nodeByAddress);
       }
+      requestAnimationFrame(() => {
+        drawFlowSwimlaneLines();
+        wireFlowInteractions();
+        applyFlowTrace();
+      });
     }
 
     async function loadFlowGraph() {
@@ -4290,7 +4506,48 @@
       if (flowGraph) renderFlowGraph(flowGraph);
     });
     flowFilterInput?.addEventListener("input", () => {
-      if (flowGraph) renderFlowGraph(flowGraph);
+      flowFocus = null;
+      applyFlowTrace();
+    });
+    flowContextMenu?.addEventListener("click", (event) => {
+      const button = event.target.closest("button[data-flow-action]");
+      if (!button || !flowSelectedMeta) return;
+      const action = button.dataset.flowAction;
+      hideFlowContextMenu();
+      if (action === "drill") {
+        flowFocus = focusForFlowMeta(flowSelectedMeta);
+        flowMode = "full";
+        if (flowModeSelect) flowModeSelect.value = "full";
+        renderFlowGraph(flowGraph);
+      } else if (action === "family") {
+        flowFocus = focusForFlowMeta(flowSelectedMeta);
+        applyFlowTrace();
+      } else if (action === "slug") {
+        const node = flowSelectedMeta.type === "node"
+          ? flowSelectedMeta.raw
+          : (flowGraph?.nodes || []).find((item) => item.address_id === flowSelectedMeta.raw.target_address_id);
+        if (flowFilterInput) flowFilterInput.value = node?.slug_id || node?.address_id || "";
+        flowFocus = null;
+        applyFlowTrace();
+      } else if (action === "copy") {
+        const text = flowMetaText(flowSelectedMeta);
+        if (navigator.clipboard?.writeText) {
+          navigator.clipboard.writeText(text).catch(() => {});
+        } else {
+          const area = document.createElement("textarea");
+          area.value = text;
+          document.body.appendChild(area);
+          area.select();
+          document.execCommand("copy");
+          area.remove();
+        }
+      }
+    });
+    document.addEventListener("click", (event) => {
+      if (!flowContextMenu?.contains(event.target)) hideFlowContextMenu();
+    });
+    document.addEventListener("keydown", (event) => {
+      if (event.key === "Escape") hideFlowContextMenu();
     });
     entityToggle?.addEventListener("click", () => {
       if (!entityPanel) return;
