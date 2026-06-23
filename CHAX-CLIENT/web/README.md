@@ -1,5 +1,11 @@
 # CHAX Web UI (Checklist Assistant)
 
+## Flow Visualization Engine
+
+See [`../../docs/flow_visual_engine_handoff.md`](../../docs/flow_visual_engine_handoff.md) for the implementation contract for connected Flow tab projections, including swimlanes, full graph, predicate overview, hierarchy relationships, and drilldown behavior.
+
+The Flow tab is instance-aware. Select the checklist instance whose resolved rows and relationships you intend to inspect; a template/root view and a populated runtime instance can legitimately have very different visible relationship density.
+
 ## OAuth PKCE Login (Web)
 
 1) Configure env on the server: `OAUTH_CLIENT_ID`, `OAUTH_CLIENT_SECRET`, `BASE_URL`, `ADMIN_USER`, `ADMIN_PASSWORD` (for local dev auth), and ensure the redirect `http://<host>:<port>/CHAX-CLIENT/web/oauth_callback.html` is allow‑listed.

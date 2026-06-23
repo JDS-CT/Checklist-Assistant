@@ -268,31 +268,48 @@
     .flow-summary .chip { font-variant-numeric: tabular-nums; }
     .flow-canvas { display: grid; gap: 12px; overflow-x: auto; }
     .flow-lane {
-      min-width: 560px;
-      border-top: 2px solid var(--border);
-      padding-top: 8px;
+      position: relative;
+      display: grid;
+      grid-template-columns: 180px minmax(0, 1fr);
+      min-width: max-content;
+      min-height: 116px;
+      border-bottom: 1px solid var(--border);
     }
     .flow-lane-title {
+      position: sticky;
+      left: 0;
+      z-index: 6;
+      display: grid;
+      align-content: center;
+      padding: 10px;
+      border: 1px solid var(--border);
+      border-bottom: 0;
+      background: var(--panel);
       color: var(--muted);
       font-size: 12px;
       font-weight: 700;
       text-transform: uppercase;
     }
     .flow-cards {
-      display: flex;
-      align-items: stretch;
-      gap: 10px;
-      padding: 8px 0 4px;
+      display: grid;
+      grid-template-columns: repeat(var(--flow-cols), var(--flow-col));
+      align-items: center;
+      min-height: 116px;
+      background: linear-gradient(90deg, color-mix(in srgb, var(--border) 35%, transparent) 1px, transparent 1px) 0 0 / var(--flow-col) 100%;
     }
     .flow-card {
-      width: 210px;
-      flex: 0 0 210px;
+      position: relative;
+      z-index: 5;
+      box-sizing: border-box;
+      width: 202px;
+      min-height: 82px;
+      margin: 8px 12px;
       border: 1px solid var(--border);
       border-radius: 8px;
       background: var(--table-row-bg);
       padding: 10px;
     }
-    .flow-card.decision { border-color: var(--warn); border-radius: 0; clip-path: polygon(50% 0, 100% 18%, 100% 82%, 50% 100%, 0 82%, 0 18%); padding: 12px 20px; }
+    .flow-card.decision { border-color: var(--warn); border-style: dashed; border-radius: 8px; }
     .flow-card.terminal { border-color: var(--muted); border-radius: 999px; }
     .flow-card.metric { border-color: var(--accent-cool-strong); border-left: 5px double var(--accent-cool-strong); border-radius: 2px 8px 8px 2px; }
     .flow-card h3 { margin: 0 0 6px; font-size: 14px; }
@@ -379,13 +396,43 @@
     .flow-card, .flow-hierarchy-row, .flow-edge-list li, .flow-graph-map [data-flow-node], .flow-graph-map [data-flow-edge-key] { cursor: context-menu; }
     .flow-card.trace-hit, .flow-hierarchy-row.trace-hit, .flow-edge-list li.trace-hit, .flow-graph-map .trace-hit { outline: 2px solid var(--warn); outline-offset: 2px; opacity: 1; }
     .flow-card.trace-dim, .flow-hierarchy-row.trace-dim, .flow-edge-list li.trace-dim, .flow-graph-map .trace-dim { opacity: 0.16; }
-    .flow-lanes-visual { position: relative; min-width: 560px; }
-    .flow-lanes-visual .flow-card { position: relative; z-index: 2; }
-    .flow-lines { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 1; }
-    .flow-lines path { fill: none; stroke: var(--accent-cool-strong); stroke-width: 1.4; opacity: 0.72; pointer-events: stroke; cursor: context-menu; }
+    .flow-lanes-visual {
+      --flow-col: 226px;
+      position: relative;
+      display: grid;
+      min-width: max-content;
+      padding: 4px 4px 72px;
+    }
+    .flow-lines { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 3; }
+    .flow-lines path { fill: none; stroke-width: 1.7; opacity: 0.8; pointer-events: stroke; cursor: context-menu; }
+    .flow-lines path.flow-order { stroke: var(--muted-strong); stroke-width: 1.2; stroke-linecap: round; opacity: 0.58; }
     .flow-lines path.external { stroke: var(--warn); stroke-dasharray: 4 4; }
     .flow-lines path.trace-hit { stroke: var(--warn); stroke-width: 3; opacity: 1; }
     .flow-lines path.trace-dim { opacity: 0.08; }
+    .flow-svg-shell { position: relative; overflow-x: scroll; overflow-y: auto; scrollbar-gutter: stable; border: 1px solid var(--border); border-radius: 8px; background: var(--details-panel-bg); }
+    .flow-topology { display: block; min-width: 920px; min-height: 340px; }
+    .flow-topology marker path { fill: var(--muted-strong); }
+    .flow-topology text { fill: var(--text); font-family: var(--font-sans); font-size: 12px; pointer-events: none; }
+    .flow-topology .flow-graph-subtext { fill: var(--muted); font-size: 10px; }
+    .flow-topology .flow-graph-edge { fill: none; stroke-width: 2.15; stroke-linecap: round; opacity: 0.86; marker-end: url(#flowArrow); pointer-events: stroke; cursor: context-menu; }
+    .flow-topology .flow-graph-edge.lineage { stroke-dasharray: 7 4; opacity: 0.68; }
+    .flow-topology .flow-graph-edge.external { stroke-dasharray: 3 5; opacity: 0.82; }
+    .flow-topology .flow-graph-edge.trace-hit { stroke: var(--warn) !important; stroke-width: 3.4; opacity: 1; }
+    .flow-topology .flow-graph-edge.trace-dim, .flow-topology .flow-graph-node.trace-dim, .flow-topology .flow-graph-hub.trace-dim, .flow-topology .flow-aggregate-node.trace-dim { opacity: 0.13; }
+    .flow-topology .flow-graph-node, .flow-topology .flow-graph-hub, .flow-topology .flow-graph-external, .flow-topology .flow-aggregate-node { cursor: context-menu; }
+    .flow-topology .flow-graph-node rect { fill: var(--table-row-bg); stroke: var(--border); stroke-width: 1.5; }
+    .flow-topology .flow-graph-node.decision rect { stroke: var(--warn); stroke-dasharray: 6 3; }
+    .flow-topology .flow-graph-node.terminal rect { stroke: var(--muted-strong); rx: 22px; }
+    .flow-topology .flow-graph-node.metric rect { stroke: var(--accent-cool-strong); stroke-width: 2.4; }
+    .flow-topology .flow-graph-hub rect, .flow-topology .flow-aggregate-node.predicate rect { fill: var(--accent-soft); stroke: var(--accent-cool-strong); }
+    .flow-topology .flow-graph-hub.lineage rect { stroke-dasharray: 5 3; }
+    .flow-topology .flow-graph-hub.external rect, .flow-topology .flow-graph-external rect { fill: var(--details-panel-bg); stroke: var(--warn); stroke-dasharray: 4 3; }
+    .flow-topology .flow-aggregate-node.section rect { fill: var(--table-row-bg); stroke: var(--border); }
+    .flow-topology .flow-aggregate-node.target rect { fill: var(--details-panel-bg); stroke: var(--muted-strong); }
+    .flow-topology .trace-hit rect { stroke: var(--warn); stroke-width: 3; }
+    .flow-edge-count { fill: var(--text); font-size: 11px; font-weight: 700; paint-order: stroke; stroke: var(--details-panel-bg); stroke-width: 4px; }
+    .flow-graph-controls { position: sticky; top: 8px; left: 8px; z-index: 8; display: flex; gap: 4px; width: max-content; padding: 4px; border: 1px solid var(--border); border-radius: 6px; background: var(--panel-glass-strong); }
+    .flow-graph-controls button { min-width: 30px; min-height: 28px; padding: 0 7px; }
     #flowContextMenu {
       position: fixed;
       z-index: 40;
@@ -633,6 +680,8 @@
   </script>
   <script src="import_export.js"></script>
   <script src="save_controller.js"></script>
+  <script src="vendor/viz/viz-global.js"></script>
+  <script src="flow_graph_engine.js"></script>
   <script src="checklist_prototype_common.js"></script>
   <script>
     checklistPrototype.init({

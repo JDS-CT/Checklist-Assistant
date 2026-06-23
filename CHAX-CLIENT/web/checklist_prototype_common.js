@@ -492,6 +492,9 @@
     let flowMode = "swimlanes";
     let flowSelectedMeta = null;
     let flowFocus = null;
+    let flowDrilldown = null;
+    let flowPreviousMode = null;
+    let flowRenderedProjection = null;
 
     const state = {
       mode: config?.defaultMode || "user",
@@ -3261,21 +3264,60 @@
       return (Array.isArray(graph?.edges) ? graph.edges : []).filter((edge) => edge.kind === "relationship");
     }
 
+    function flowSwimlaneEdges(graph) {
+      return (Array.isArray(graph?.edges) ? graph.edges : []).filter((edge) => (
+        edge.kind === "checklistOrder" ||
+        (
+          edge.kind === "relationship" &&
+          !edge.is_lineage &&
+          !edge.is_external &&
+          edge.source_address_id &&
+          edge.target_address_id
+        )
+      ));
+    }
+
+    function sortedFlowNodes(nodes) {
+      return [...nodes].sort((left, right) => {
+        const leftOrder = Number(left.address_order || 0);
+        const rightOrder = Number(right.address_order || 0);
+        if (leftOrder !== rightOrder) return leftOrder - rightOrder;
+        return String(left.address_id || "").localeCompare(String(right.address_id || ""));
+      });
+    }
+
     function flowEdgeKey(edge) {
       return [edge?.source_address_id || "", edge?.predicate || "", edge?.target_address_id || ""].join("\u001f");
+    }
+
+    function flowPredicateColor(predicate) {
+      const colors = {
+        ResultSearchPrefillResult: "#96e6a1",
+        ResultSearchPrefillStatus: "#76e4f7",
+        ResultSearchPrefillComment: "#f4a6d7",
+        PassSearchPrefillResult: "#a8d17c",
+        BoolVerifyValidatedStatus: "#ffcb66",
+        ResultPropagateValidatedResult: "#64d2a6",
+        passPropagateValidatedPass: "#7bcf8a",
+        failPropagateValidatedFail: "#ff8d8d",
+        naPropagateValidatedNa: "#b9c2ce",
+        otherPropagateValidatedOther: "#c59bff",
+      };
+      return colors[predicate] || "var(--accent-cool-strong)";
     }
 
     function flowNodeName(node, fallback) {
       return node?.procedure || fallback || "(unknown)";
     }
 
-    function flowNodeCard(node) {
+    function flowNodeCard(node, orderColumn) {
       const shape = ["action", "decision", "terminal", "metric"].includes(node.visual_shape)
         ? node.visual_shape
         : "action";
       const status = node.status ? `Status: ${node.status}` : "Status: not set";
+      const gridColumn = Number.isInteger(orderColumn) && orderColumn > 0 ? ` style="grid-column: ${orderColumn};"` : "";
       return `
-        <article class="flow-card ${shape}" data-flow-node="${escapeHtmlAttr(node.address_id || "")}" tabindex="0" role="button" title="${escapeHtmlAttr(node.address_id || "")}">
+        <article class="flow-card ${shape}" data-flow-node="${escapeHtmlAttr(node.address_id || "")}" tabindex="0" role="button" title="${escapeHtmlAttr(node.address_id || "")}"${gridColumn}>
           <h3>${escapeHtml(flowNodeName(node, "(unnamed procedure)"))}</h3>
           <p>${escapeHtml(node.action || "")}</p>
           <p>${escapeHtml(node.spec || "")}</p>
@@ -3300,17 +3342,20 @@
     }
 
     function renderFlowSwimlanes(nodes) {
+      const orderedNodes = sortedFlowNodes(nodes);
       const sections = new Map();
-      nodes.forEach((node) => {
+      const orderColumns = new Map();
+      orderedNodes.forEach((node, index) => {
+        orderColumns.set(node.address_id, index + 1);
         const key = node.section || "(no section)";
         if (!sections.has(key)) sections.set(key, []);
         sections.get(key).push(node);
       });
-      flowCanvas.innerHTML = `<div class="flow-lanes-visual">${Array.from(sections.entries())
+      flowCanvas.innerHTML = `<div class="flow-lanes-visual" style="--flow-cols: ${Math.max(1, orderedNodes.length)}">${Array.from(sections.entries())
         .map(([section, rows]) => `
           <section class="flow-lane">
             <div class="flow-lane-title">${escapeHtml(section)}</div>
-            <div class="flow-cards">${rows.map(flowNodeCard).join("")}</div>
+            <div class="flow-cards">${rows.map((node) => flowNodeCard(node, orderColumns.get(node.address_id))).join("")}</div>
           </section>`)
         .join("")}</div>`;
     }
@@ -3472,13 +3517,27 @@
     }
 
     function flowEdgeMeta(key) {
-      const edge = flowRelationshipEdges(flowGraph).find((item) => flowEdgeKey(item) === key);
-      return edge ? { type: "edge", key, raw: edge } : null;
+      const edge = (flowGraph?.edges || []).find((item) => flowEdgeKey(item) === key);
+      if (edge) return { type: "edge", key, raw: edge };
+      const aggregate = flowRenderedProjection?.groups?.find((item) => item.key === key);
+      return aggregate ? { type: "aggregate", key, raw: aggregate } : null;
+    }
+
+    function flowHubMeta(predicate, kind) {
+      return predicate ? { type: "hub", key: `${kind || "predicate"}:${predicate}`, raw: { predicate, kind: kind || "predicate" } } : null;
+    }
+
+    function flowExternalMeta(target) {
+      return target ? { type: "external", key: target, raw: { target_address_id: target } } : null;
     }
 
     function flowMetaFromElement(element) {
       const nodeElement = element.closest("[data-flow-node]");
       if (nodeElement) return flowNodeMeta(nodeElement.dataset.flowNode || "");
+      const hubElement = element.closest("[data-flow-hub]");
+      if (hubElement) return flowHubMeta(hubElement.dataset.flowHub || "", hubElement.dataset.flowHubKind || "");
+      const externalElement = element.closest("[data-flow-external]");
+      if (externalElement) return flowExternalMeta(externalElement.dataset.flowExternal || "");
       const edgeElement = element.closest("[data-flow-edge-key]");
       if (edgeElement) return flowEdgeMeta(edgeElement.dataset.flowEdgeKey || "");
       return null;
@@ -3487,6 +3546,7 @@
     function flowMetaText(meta) {
       if (!meta) return "";
       if (meta.type === "node") return JSON.stringify(meta.raw, null, 2);
+      if (meta.type === "hub" || meta.type === "external" || meta.type === "aggregate") return JSON.stringify(meta.raw, null, 2);
       const nodes = new Map((flowGraph?.nodes || []).map((node) => [node.address_id, node]));
       const edge = meta.raw;
       return JSON.stringify({
@@ -3522,6 +3582,32 @@
         ].join("");
         return;
       }
+      if (meta.type === "hub") {
+        flowInspector.innerHTML = [
+          '<h3>Inspect Predicate</h3>',
+          `<div class="meta-line"><strong>Predicate</strong><span>${escapeHtml(meta.raw.predicate || "")}</span></div>`,
+          `<div class="meta-line"><strong>Context</strong><span>${escapeHtml(meta.raw.kind || "relationship")}</span></div>`,
+          '<div class="note">Drill down renders the connected rows using this predicate.</div>',
+        ].join("");
+        return;
+      }
+      if (meta.type === "external") {
+        flowInspector.innerHTML = [
+          '<h3>Inspect External Target</h3>',
+          `<div class="meta-line"><strong>Target</strong><span>${escapeHtml(meta.raw.target_address_id || "")}</span></div>`,
+        ].join("");
+        return;
+      }
+      if (meta.type === "aggregate") {
+        flowInspector.innerHTML = [
+          '<h3>Inspect Aggregate</h3>',
+          `<div class="meta-line"><strong>Source</strong><span>${escapeHtml(meta.raw.sourceLabel || "")}</span></div>`,
+          `<div class="meta-line"><strong>Predicate</strong><span>${escapeHtml(meta.raw.predicate || "")}</span></div>`,
+          `<div class="meta-line"><strong>Target</strong><span>${escapeHtml(meta.raw.targetLabel || "")}</span></div>`,
+          `<div class="meta-line"><strong>Count</strong><span>${escapeHtml(String(meta.raw.edges?.length || 0))}</span></div>`,
+        ].join("");
+        return;
+      }
       const edge = meta.raw;
       const nodeByAddress = new Map((flowGraph?.nodes || []).map((node) => [node.address_id, node]));
       flowInspector.innerHTML = [
@@ -3548,6 +3634,7 @@
     function focusForFlowMeta(meta) {
       if (!meta) return null;
       if (meta.type === "node") return { type: "node", address_id: meta.raw.address_id };
+      if (meta.type === "hub" || meta.type === "aggregate") return { type: "predicate", predicate: meta.raw.predicate };
       return { type: "predicate", predicate: meta.raw.predicate };
     }
 
@@ -3610,6 +3697,13 @@
       document.querySelectorAll("[data-flow-edge-key]").forEach((element) => {
         apply(element, trace.hitEdges.has(element.dataset.flowEdgeKey || ""));
       });
+      document.querySelectorAll("[data-flow-hub]").forEach((element) => {
+        const predicate = element.dataset.flowHub || "";
+        const hit = trace.hitEdges.size
+          ? flowRelationshipEdges(flowGraph).some((edge) => edge.predicate === predicate && trace.hitEdges.has(flowEdgeKey(edge)))
+          : false;
+        apply(element, hit);
+      });
     }
 
     function drawFlowSwimlaneLines() {
@@ -3627,26 +3721,56 @@
       svg.setAttribute("height", visual.scrollHeight);
       svg.innerHTML = "";
       const cards = new Map(Array.from(visual.querySelectorAll("[data-flow-node]")).map((card) => [card.dataset.flowNode, card]));
-      flowRelationshipEdges(flowGraph).forEach((edge) => {
+      flowSwimlaneEdges(flowGraph).forEach((edge) => {
         const source = cards.get(edge.source_address_id);
         const target = cards.get(edge.target_address_id);
         if (!source || !target) return;
         const sourceRect = source.getBoundingClientRect();
         const targetRect = target.getBoundingClientRect();
-        const start = { x: sourceRect.right - rect.left, y: sourceRect.top + sourceRect.height / 2 - rect.top };
-        const end = { x: targetRect.left - rect.left, y: targetRect.top + targetRect.height / 2 - rect.top };
         const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
         path.dataset.flowEdgeKey = flowEdgeKey(edge);
-        path.setAttribute("d", `M ${start.x} ${start.y} C ${start.x + 34} ${start.y}, ${end.x - 34} ${end.y}, ${end.x} ${end.y}`);
+        if (source === target) {
+          const x = sourceRect.right - rect.left - 12;
+          const y = sourceRect.top - rect.top + 10;
+          path.setAttribute("d", `M ${x} ${y} C ${x + 28} ${y - 24}, ${x + 60} ${y - 24}, ${x + 60} ${y + 8}`);
+        } else {
+          const sourceCenter = sourceRect.left + sourceRect.width / 2;
+          const targetCenter = targetRect.left + targetRect.width / 2;
+          const forward = sourceCenter <= targetCenter;
+          const start = {
+            x: (forward ? sourceRect.right : sourceRect.left) - rect.left,
+            y: sourceRect.top + sourceRect.height / 2 - rect.top,
+          };
+          const end = {
+            x: (forward ? targetRect.left : targetRect.right) - rect.left,
+            y: targetRect.top + targetRect.height / 2 - rect.top,
+          };
+          const direction = forward ? 1 : -1;
+          path.setAttribute(
+            "d",
+            `M ${start.x} ${start.y} C ${start.x + direction * 34} ${start.y}, ${end.x - direction * 34} ${end.y}, ${end.x} ${end.y}`
+          );
+        }
         path.setAttribute("title", edge.predicate || "relationship");
-        if (edge.is_external) path.classList.add("external");
+        if (edge.kind === "checklistOrder") {
+          path.classList.add("flow-order");
+        } else {
+          path.setAttribute("stroke", flowPredicateColor(edge.predicate));
+        }
         svg.append(path);
       });
     }
 
     function wireFlowInteractions() {
+      (flowCanvas?.querySelectorAll("button[data-flow-zoom]") || []).forEach((button) => {
+        button.addEventListener("click", (event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          window.flowGraphEngine?.applyZoom(flowCanvas, button.dataset.flowZoom || "fit");
+        });
+      });
       const interactive = [
-        ...(flowCanvas?.querySelectorAll("[data-flow-node], [data-flow-edge-key]") || []),
+        ...(flowCanvas?.querySelectorAll("[data-flow-node], [data-flow-edge-key], [data-flow-hub], [data-flow-external]") || []),
         ...(flowEdges?.querySelectorAll("[data-flow-edge-key]") || []),
       ];
       interactive.forEach((element) => {
@@ -3674,11 +3798,14 @@
       const nodes = allNodes;
       const nodeByAddress = new Map(allNodes.map((node) => [node.address_id, node]));
       const edges = allEdges;
+      const engine = window.flowGraphEngine;
+      let renderDone = Promise.resolve();
       flowSummary.innerHTML = [
         `<span class="chip">${escapeHtml(String(summary.sections ?? new Set(nodes.map((node) => node.section)).size))} sections</span>`,
         `<span class="chip">${escapeHtml(String(nodes.length))} rows</span>`,
         `<span class="chip">${escapeHtml(String(edges.length))} relationships</span>`,
         `<span class="chip">${escapeHtml(String(edges.filter((edge) => edge.is_external).length))} external</span>`,
+        flowDrilldown ? '<button class="secondary" type="button" data-flow-back>Back to view</button>' : "",
       ].join("");
       if (!nodes.length) {
         flowCanvas.innerHTML = '<div class="note">No checklist rows are available for this instance.</div>';
@@ -3686,13 +3813,34 @@
         return;
       }
 
-      if (flowMode === "hierarchy") {
-        renderFlowHierarchy(edges, nodeByAddress);
+      if (!engine) {
+        flowCanvas.innerHTML = '<div class="note">Flow visualization engine is unavailable. Refresh the page after the client assets are updated.</div>';
         flowEdges.innerHTML = "";
+        return;
+      }
+
+      const renderProjection = (projection, listEdges) => {
+        flowRenderedProjection = projection;
+        renderDone = Promise.resolve(engine.renderProjection(flowCanvas, projection, {
+          escapeHtml,
+          escapeHtmlAttr,
+          predicateColor: flowPredicateColor,
+          nodeCard: flowNodeCard,
+        }));
+        flowEdges.innerHTML = "";
+      };
+
+      if (flowDrilldown) {
+        const projection = engine.buildDrilldownProjection(graph, flowDrilldown);
+        renderProjection(projection, projection.edges);
+      } else if (flowMode === "hierarchy") {
+        const projection = engine.buildHierarchyProjection(graph);
+        renderProjection(projection, projection.edges);
       } else if (flowMode === "full") {
-        renderFlowGraphMap(nodes, edges, nodeByAddress);
-        renderFlowEdgeList(edges, nodeByAddress);
+        const projection = engine.buildFullConcentratedProjection(graph);
+        renderProjection(projection, projection.edges);
       } else if (flowMode === "sections") {
+        flowRenderedProjection = null;
         const sectionGroups = new Map();
         nodes.forEach((node) => {
           const key = node.section || "(no section)";
@@ -3718,42 +3866,35 @@
         })));
         flowEdges.innerHTML = "";
       } else if (flowMode === "predicates") {
-        const predicates = new Map();
-        edges.forEach((edge) => {
-          const key = edge.predicate || "(unnamed predicate)";
-          if (!predicates.has(key)) predicates.set(key, { total: 0, local: 0, external: 0, lineage: 0 });
-          const item = predicates.get(key);
-          item.total += 1;
-          if (edge.is_lineage) item.lineage += 1;
-          else if (edge.is_external) item.external += 1;
-          else item.local += 1;
-        });
-        renderFlowOverview("Predicate", Array.from(predicates.entries()).map(([title, item]) => ({
-          title,
-          metrics: [
-            { label: "Total", value: item.total },
-            { label: "Local", value: item.local },
-            { label: "External", value: item.external },
-            { label: "Lineage", value: item.lineage },
-          ],
-        })));
-        flowEdges.innerHTML = "";
+        const projection = engine.buildPredicateOverviewProjection(graph);
+        renderProjection(projection, projection.groups.flatMap((group) => group.edges));
       } else if (flowMode === "external") {
+        flowRenderedProjection = null;
         renderFlowExternal(edges, nodeByAddress);
         if (!edges.some((edge) => edge.is_external)) {
           flowCanvas.innerHTML = '<div class="note">No external or legacy targets are referenced by this instance.</div>';
         }
         flowEdges.innerHTML = "";
       } else if (flowMode === "lint") {
+        flowRenderedProjection = null;
         renderFlowLint(nodes, edges, nodeByAddress, graph?.warnings);
       } else {
-        renderFlowSwimlanes(nodes);
-        renderFlowEdgeList(edges, nodeByAddress);
+        const projection = engine.buildSwimlaneProjection(graph);
+        flowRenderedProjection = projection;
+        renderDone = Promise.resolve(engine.renderProjection(flowCanvas, projection, {
+          escapeHtml,
+          escapeHtmlAttr,
+          predicateColor: flowPredicateColor,
+          nodeCard: flowNodeCard,
+        }));
+        renderFlowEdgeList([...projection.partition.order, ...projection.partition.local], nodeByAddress);
       }
-      requestAnimationFrame(() => {
-        drawFlowSwimlaneLines();
+      renderDone.then(() => requestAnimationFrame(() => {
+        if (flowMode === "swimlanes" && !flowDrilldown) drawFlowSwimlaneLines();
         wireFlowInteractions();
         applyFlowTrace();
+      })).catch((err) => {
+        flowCanvas.innerHTML = `<div class="note">Flow render failed: ${escapeHtml(err.message || String(err))}</div>`;
       });
     }
 
@@ -4503,11 +4644,26 @@
     });
     flowModeSelect?.addEventListener("change", () => {
       flowMode = flowModeSelect.value || "swimlanes";
+      flowDrilldown = null;
+      flowPreviousMode = null;
       if (flowGraph) renderFlowGraph(flowGraph);
     });
     flowFilterInput?.addEventListener("input", () => {
       flowFocus = null;
       applyFlowTrace();
+    });
+    window.addEventListener("resize", () => {
+      if (activeView === "flow" && flowMode === "swimlanes") {
+        requestAnimationFrame(drawFlowSwimlaneLines);
+      }
+    });
+    flowSummary?.addEventListener("click", (event) => {
+      if (!event.target.closest("[data-flow-back]")) return;
+      flowDrilldown = null;
+      flowMode = flowPreviousMode || flowMode;
+      flowPreviousMode = null;
+      if (flowModeSelect) flowModeSelect.value = flowMode;
+      if (flowGraph) renderFlowGraph(flowGraph);
     });
     flowContextMenu?.addEventListener("click", (event) => {
       const button = event.target.closest("button[data-flow-action]");
@@ -4515,9 +4671,8 @@
       const action = button.dataset.flowAction;
       hideFlowContextMenu();
       if (action === "drill") {
-        flowFocus = focusForFlowMeta(flowSelectedMeta);
-        flowMode = "full";
-        if (flowModeSelect) flowModeSelect.value = "full";
+        if (!flowDrilldown) flowPreviousMode = flowMode;
+        flowDrilldown = flowSelectedMeta;
         renderFlowGraph(flowGraph);
       } else if (action === "family") {
         flowFocus = focusForFlowMeta(flowSelectedMeta);

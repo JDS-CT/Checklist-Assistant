@@ -6,5 +6,6 @@ This repository includes third-party source dependencies with their own license 
 - nlohmann/json: `third_party/nlohmann/LICENSE.MIT`
 - SQLite amalgamation: `third_party/sqlite/sqlite3.c`, `third_party/sqlite/sqlite3.h`, and `third_party/sqlite/LICENSE.md`
 - xxHash: `third_party/xxhash/xxhash.c`, `third_party/xxhash/xxhash.h`, and `third_party/xxhash/LICENSE`
+- Viz.js 3.28.0 (MIT): `CHAX-CLIENT/web/vendor/viz/viz-global.js`; includes Graphviz and Expat object code as described in its header.
 
 Private checklist packs, customer material, generated release artifacts, and local runtime databases are not part of this public seed.
