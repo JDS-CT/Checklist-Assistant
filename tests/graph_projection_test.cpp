@@ -87,6 +87,7 @@ int main() {
 
     const auto dot = core::RenderChecklistGraphDot(graph);
     const auto mermaid = core::RenderChecklistGraphMermaid(graph);
+    const auto dbml = core::RenderChecklistRuntimeSchemaDbml();
     Assert(dot.find("digraph checklist") != std::string::npos, "DOT export should be generated");
     Assert(dot.find("checklistOrder") != std::string::npos,
            "DOT export should preserve derived order labels");
@@ -94,6 +95,13 @@ int main() {
            "Mermaid export should be generated");
     Assert(mermaid.find("passPropagateValidatedPass") != std::string::npos,
            "Mermaid export should preserve relationship predicates");
+    Assert(dbml.find("Project checklist_assistant_runtime") != std::string::npos,
+           "DBML export should identify the runtime schema");
+    Assert(dbml.find("Table address_relationships") != std::string::npos,
+           "DBML export should include address relationship storage");
+    Assert(dbml.find("Ref: address_relationships.subject_address_id > slugs.address_id") !=
+               std::string::npos,
+           "DBML export should expose self-referential runtime relationship references");
     std::cout << "CHAX_STEP|graph_projection_test|native projection|Pass|graph projection and exports verified\n";
     return 0;
   } catch (const std::exception& ex) {

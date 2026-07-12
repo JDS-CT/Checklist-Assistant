@@ -393,4 +393,120 @@ std::string RenderChecklistGraphMermaid(const ChecklistGraph& graph) {
   return out.str();
 }
 
+std::string RenderChecklistRuntimeSchemaDbml() {
+  return R"dbml(Project checklist_assistant_runtime {
+  database_type: 'SQLite'
+  Note: 'Mode A core runtime schema. Relationship predicates remain opaque values; profile and deployment-specific domain tables are intentionally not represented here.'
+}
+
+Table entities {
+  entity_id text [pk]
+  principal text [not null]
+  kind text [not null]
+  display_name text
+  meta text
+}
+
+Table instance_catalog {
+  instance_id text [pk]
+  principal text [not null]
+  label text
+  meta text
+}
+
+Table slugs {
+  address_id text [pk]
+  slug_id text [not null]
+  instance_id text [not null]
+  checklist text [not null]
+  section text [not null]
+  procedure text [not null]
+  action text [not null]
+  spec text [not null]
+  instructions text [not null]
+  result text
+  status text [not null, note: 'Pass, Fail, NA, Other, or Unknown']
+  comment text
+  timestamp text
+  entity_id text [not null]
+}
+
+Table slug_order {
+  address_id text [pk]
+  address_order integer [not null, note: 'Gapped persisted order; compact display order is derived']
+}
+
+Table slug_ownership {
+  slug_id text [not null]
+  checklist text [not null]
+  source_name text [not null]
+  source_path text
+  pack text [not null]
+  checklist_dir text [not null]
+  updated_at text [not null]
+
+  indexes {
+    (slug_id, source_name, pack, checklist_dir) [pk]
+  }
+}
+
+Table address_ownership {
+  address_id text [not null]
+  slug_id text [not null]
+  instance_id text [not null]
+  checklist text [not null]
+  source_name text [not null]
+  source_path text
+  pack text [not null]
+  checklist_dir text [not null]
+  updated_at text [not null]
+
+  indexes {
+    (address_id, source_name, pack, checklist_dir) [pk]
+  }
+}
+
+Table template_relationships {
+  subject_slug_id text [not null, note: 'Logical template row identity']
+  predicate text [not null, note: 'Opaque predicate; optional catalog entry in predicates']
+  target_slug_id text [not null, note: 'Logical template row identity; self-reference is valid for predicate-defined self-rules']
+}
+
+Table address_relationships {
+  subject_address_id text [not null, note: 'Runtime row identity']
+  predicate text [not null, note: 'Opaque predicate; optional catalog entry in predicates']
+  target_address_id text [not null, note: 'Runtime row identity; self-reference is predicate-dependent']
+}
+
+Table predicates {
+  name text [pk]
+  kind text [not null]
+  status text [not null]
+  description text
+  meta text
+}
+
+Table history {
+  address_id text [not null]
+  timestamp text [not null]
+  result text
+  status text
+  comment text
+  entity_id text [not null]
+
+  indexes {
+    (address_id, timestamp) [pk]
+  }
+}
+
+Ref: slugs.entity_id > entities.entity_id
+Ref: slug_order.address_id - slugs.address_id
+Ref: address_ownership.address_id > slugs.address_id
+Ref: address_relationships.subject_address_id > slugs.address_id
+Ref: address_relationships.target_address_id > slugs.address_id
+Ref: history.address_id > slugs.address_id
+Ref: history.entity_id > entities.entity_id
+)dbml";
+}
+
 }  // namespace core

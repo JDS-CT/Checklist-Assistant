@@ -2,6 +2,7 @@
 
 ## Basics
 
+- Read `PRINCIPLES.md` before making design, data-format, or source-control decisions.
 - Keep tracked text files UTF-8 without BOM.
 - Use CMake and Ninja for builds; avoid adding IDE-only project files.
 - Keep public examples generic and free of private/customer/vendor-specific operational content.

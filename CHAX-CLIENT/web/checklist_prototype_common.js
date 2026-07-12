@@ -3928,19 +3928,17 @@
       }
       const context = resolveScriptsContext(checklist);
       try {
+        const payload = { checklist, instance_id: instanceId };
+        if (context.sourceName) payload.source_name = context.sourceName;
+        if (context.pack) payload.pack = context.pack;
+        if (context.checklistDir) payload.checklist_dir = context.checklistDir;
         const result = await fetchJson("/api/v1/workspace/visualizations/export", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            checklist,
-            instance_id: instanceId,
-            source_name: context.sourceName || "",
-            pack: context.pack || "",
-            checklist_dir: context.checklistDir || "",
-          }),
+          body: JSON.stringify(payload),
         });
         await loadFlowGraph();
-        alert(`Flow exports updated in ${result.directory || "the checklist visualizations folder"}.`);
+        alert(`Flow exports (JSON, DOT, Mermaid, and DBML) updated in ${result.directory || "the checklist visualizations folder"}.`);
       } catch (err) {
         alert(`Flow export failed: ${err.message || err}`);
       }

@@ -48,5 +48,6 @@ struct ChecklistGraph {
 ChecklistGraph BuildChecklistGraph(const std::vector<ChecklistSlug>& slugs);
 std::string RenderChecklistGraphDot(const ChecklistGraph& graph);
 std::string RenderChecklistGraphMermaid(const ChecklistGraph& graph);
+std::string RenderChecklistRuntimeSchemaDbml();
 
 }  // namespace core

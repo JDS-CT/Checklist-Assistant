@@ -6000,10 +6000,12 @@ void ConfigureServer(platform::HttpServer& server, ChecklistStore& store, OAuthS
       const auto json_path = output_root / "graph.json";
       const auto dot_path = output_root / "section-flow.dot";
       const auto mermaid_path = output_root / "section-flow.mmd";
+      const auto dbml_path = output_root / "runtime-schema.dbml";
       std::string write_error;
       if (!WriteUtf8File(json_path, graph_json.dump(2) + "\n", &write_error) ||
           !WriteUtf8File(dot_path, RenderChecklistGraphDot(graph), &write_error) ||
-          !WriteUtf8File(mermaid_path, RenderChecklistGraphMermaid(graph), &write_error)) {
+          !WriteUtf8File(mermaid_path, RenderChecklistGraphMermaid(graph), &write_error) ||
+          !WriteUtf8File(dbml_path, RenderChecklistRuntimeSchemaDbml(), &write_error)) {
         return ErrorResponse("INTERNAL_ERROR", write_error, {}, 500);
       }
 
@@ -6011,7 +6013,8 @@ void ConfigureServer(platform::HttpServer& server, ChecklistStore& store, OAuthS
               resolved_root->source_name + " pack=" + resolved_root->pack +
               " checklist=" + checklist + " instance=" + instance_id +
               " -> " + output_root.string());
-      json files = json::array({json_path.string(), dot_path.string(), mermaid_path.string()});
+      json files =
+          json::array({json_path.string(), dot_path.string(), mermaid_path.string(), dbml_path.string()});
       return OkResponse(
           json{{"source_name", resolved_root->source_name},
                {"source_path", resolved_root->library_root.string()},

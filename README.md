@@ -49,6 +49,22 @@ Then open `http://127.0.0.1:8080/ui/`.
 
 The server creates local runtime state in `.chax/`. That folder is ignored by git and can be removed to reset local runtime data.
 
+## Private Checklist Assets
+
+The Windows `stage-windows-runtime` target removes and recreates the whole sibling `Checklist-Assistant-runtime` folder. Treat that runtime as disposable: do not keep the only copy of a private or customer-specific checklist under its `checklists/` folder.
+
+Instead, keep private assets in a separate sibling workspace or repository with the same canonical shape:
+
+```text
+<private-assets>/
+  checklists/
+    <private-pack>/
+      <checklist>/
+        checklist.md
+```
+
+In the running application, open Portal Settings and add the private workspace as `source_name=path`. The setting is machine-local in the runtime's ignored `.chax/local_settings.json`; it is not copied into the public repository. Select the exact source and pack when importing, exporting, running scripts, or generating a report so private assets remain in their owning workspace. See [the private-pack guidance](docs/user_manual.md#16-private-packs-and-public-examples) for the required layout and cutover cautions.
+
 ## Repository Layout
 
 - `src/`: C++ server, app core, platform adapters, and tools.

@@ -865,6 +865,8 @@ int main() {
            "Graph export should write DOT under the checklist visualizations folder");
     Assert(std::filesystem::exists(graph_export_root / "section-flow.mmd"),
            "Graph export should write Mermaid under the checklist visualizations folder");
+    Assert(std::filesystem::exists(graph_export_root / "runtime-schema.dbml"),
+           "Graph export should write the DBML runtime schema under the checklist visualizations folder");
     RecordStep(current_step, true, "graph view and asset-pack exports ok");
 
     current_step = "workspace markdown";
