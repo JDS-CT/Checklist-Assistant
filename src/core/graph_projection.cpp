@@ -731,6 +731,7 @@ json BuildRelationshipWorkbench(const ChecklistGraph& graph,
   }
 
   std::unordered_map<std::string, std::vector<std::string>> legacy_alias_slugs;
+  std::vector<TemplateRelationship> markdown_relationships;
   {
     const auto markdown_path = checklist_root / "checklist.md";
     std::ifstream input(markdown_path, std::ios::binary);
@@ -739,6 +740,7 @@ json BuildRelationshipWorkbench(const ChecklistGraph& graph,
                                  std::istreambuf_iterator<char>());
       try {
         const auto parsed = markdown::ParseChecklistMarkdown("", contents);
+        markdown_relationships = parsed.template_relationships;
         for (const auto& relationship : parsed.template_relationships) {
           if (relationship.predicate == kSlugPredecessorPredicate) {
             legacy_alias_slugs[relationship.target_slug_id].push_back(
@@ -778,6 +780,20 @@ json BuildRelationshipWorkbench(const ChecklistGraph& graph,
     }
     return resolved;
   };
+  std::unordered_map<std::string, json> unresolved_markdown_relationships;
+  for (const auto& relationship : markdown_relationships) {
+    if (relationship.predicate == kSlugPredecessorPredicate ||
+        relationship.predicate == kSlugSuccessorPredicate ||
+        addresses_by_slug.find(relationship.subject_slug_id) == addresses_by_slug.end()) {
+      continue;
+    }
+    std::string alias_used;
+    if (!resolve_addresses(relationship.target_slug_id, &alias_used).empty()) {
+      continue;
+    }
+    unresolved_markdown_relationships[relationship.subject_slug_id].push_back(
+        {{"predicate", relationship.predicate}, {"target_slug_id", relationship.target_slug_id}});
+  }
   const auto render_legacy_alias = [&add_node, &add_edge](const std::string& legacy_slug_id,
                                                            const std::vector<std::string>& addresses) {
     if (legacy_slug_id.empty()) {
@@ -875,8 +891,8 @@ json BuildRelationshipWorkbench(const ChecklistGraph& graph,
         std::string legacy_alias;
         const auto matching = resolve_addresses(slug_id, &legacy_alias);
         if (slug_id.empty() || matching.empty()) {
-          add_finding("DIRECT_WRITE_UNDECLARED", "warning",
-                      "A mutation source does not identify an imported target row.", "",
+          add_finding("MUTATION_SOURCE_TARGET_MISSING", "warning",
+                      "A declared mutation source does not identify an imported target row.", "",
                       {{"slug_id", slug_id}, {"name", name}});
           continue;
         }
@@ -934,6 +950,7 @@ json BuildRelationshipWorkbench(const ChecklistGraph& graph,
         ++dataset_count;
 
         const json lookup = dataset.value("lookup", json::object());
+        bool lookup_resolved = false;
         if (lookup.is_object()) {
           const std::string lookup_slug_id = lookup.value("slug_id", "");
           const std::string lookup_field = lookup.value("field", "");
@@ -946,6 +963,7 @@ json BuildRelationshipWorkbench(const ChecklistGraph& graph,
                         "A dataset lookup must reference an imported slug, field, and source column.",
                         dataset_id, {{"slug_id", lookup_slug_id}, {"column", lookup_column}});
           } else {
+            lookup_resolved = true;
             render_legacy_alias(legacy_alias, matching);
             for (const auto& address_id : matching) {
               add_edge("row:" + address_id, dataset_id, "lookup_key",
@@ -986,14 +1004,22 @@ json BuildRelationshipWorkbench(const ChecklistGraph& graph,
 
           if (record_count > 0 && nonempty_count == record_count && distinct_values.size() == 1) {
             add_finding("CONSTANT_COLUMN", "info",
-                        "A dataset column has one value across every record.", column_id,
-                        {{"header", headers[column_index]}, {"records", record_count},
+                        "Every dataset record has the same non-empty value in this column.", column_id,
+                        {{"header", headers[column_index]},
+                         {"records", record_count},
+                         {"nonempty", nonempty_count},
+                         {"distinct", distinct_values.size()},
                          {"characters", character_count}});
           }
-          if (nonempty_count > 1 && distinct_values.size() == 1) {
+          if (nonempty_count > 1 && nonempty_count < record_count && distinct_values.size() == 1) {
             add_finding("REPEATED_LITERAL", "info",
-                        "A dataset column repeats one non-empty literal value.", column_id,
-                        {{"header", headers[column_index]}, {"records", nonempty_count},
+                        "The same non-empty value occurs in every populated cell; other records are blank.",
+                        column_id,
+                        {{"header", headers[column_index]},
+                         {"records", record_count},
+                         {"nonempty", nonempty_count},
+                         {"blank", record_count - nonempty_count},
+                         {"distinct", distinct_values.size()},
                          {"characters", character_count}});
           }
 
@@ -1026,10 +1052,33 @@ json BuildRelationshipWorkbench(const ChecklistGraph& graph,
             ++binding_count;
           }
         }
-        if (bound_column_count > 20) {
+        const std::size_t bound_row_count = [&]() {
+          std::unordered_set<std::string> addresses;
+          for (const auto& edge : edges) {
+            if (edge.value("class", "") == "column_binding" &&
+                edge.value("source_id", "").rfind(dataset_id + ":column:", 0) == 0) {
+              const std::string target_id = edge.value("target_id", "");
+              if (target_id.rfind("row:", 0) == 0) {
+                addresses.insert(target_id.substr(4));
+              }
+            }
+          }
+          return addresses.size();
+        }();
+        const double bound_row_coverage = graph.nodes.empty()
+                                                ? 0.0
+                                                : static_cast<double>(bound_row_count) /
+                                                      static_cast<double>(graph.nodes.size());
+        if (lookup_resolved && bound_column_count >= 3 && bound_row_coverage >= 0.25) {
           add_finding("HIGH_FAN_OUT_LOOKUP_KEY", "info",
-                      "One dataset lookup fans out to more than 20 header-derived checklist fields.",
-                      dataset_id, {{"bound_columns", bound_column_count}});
+                      "One declared lookup binds a substantial share of the current checklist.",
+                      dataset_id,
+                      {{"bound_columns", bound_column_count},
+                       {"bound_rows", bound_row_count},
+                       {"checklist_rows", graph.nodes.size()},
+                       {"bound_row_coverage", bound_row_coverage},
+                       {"minimum_bound_columns", 3},
+                       {"minimum_bound_row_coverage", 0.25}});
         }
       }
     }
@@ -1041,10 +1090,19 @@ json BuildRelationshipWorkbench(const ChecklistGraph& graph,
       continue;
     }
     ++orphan_count;
+    json details{{"address_id", node.address_id},
+                 {"slug_id", node.slug_id},
+                 {"section", node.section},
+                 {"procedure", node.procedure},
+                 {"action", node.action},
+                 {"derived_checklist_order_excluded", true}};
+    const auto unresolved = unresolved_markdown_relationships.find(node.slug_id);
+    if (unresolved != unresolved_markdown_relationships.end()) {
+      details["unresolved_markdown_relationships"] = unresolved->second;
+    }
     add_finding("ORPHAN_ROW", "warning",
-                "This row has no predicate, lookup/binding, mutation, applicability, or declared terminal relationship.",
-                "row:" + node.address_id,
-                {{"address_id", node.address_id}, {"slug_id", node.slug_id}});
+                "This row has no emitted predicate, lookup/binding, declared mutation source, or declared terminal relationship.",
+                "row:" + node.address_id, details);
   }
 
   return {{"schema", "chax-relationship-workbench-v1"},

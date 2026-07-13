@@ -44,6 +44,7 @@ int main() {
     auto first = MakeSlug(checklist, instance_id, 1000, "Prepare", "Measure input", ">= 10 V");
     auto second = MakeSlug(checklist, instance_id, 2000, "Prepare", "Gate review", "Pass");
     auto third = MakeSlug(checklist, instance_id, 3000, "Finish", "Record outcome", "note");
+    auto fourth = MakeSlug(checklist, instance_id, 4000, "Finish", "Unconnected review", "note");
 
     first.relationships = {
         {"passPropagateValidatedPass", second.address_id},
@@ -114,8 +115,9 @@ int main() {
     {
       std::ofstream markdown(workbench_root / "checklist.md", std::ios::binary);
       markdown << core::markdown::ExportChecklistMarkdown(
-          checklist, {first, second, third},
-          {{first.slug_id, "slugPredecessor", legacy_serial_slug_id}},
+          checklist, {first, second, third, fourth},
+          {{first.slug_id, "slugPredecessor", legacy_serial_slug_id},
+           {fourth.slug_id, "ResultSearchPrefillResult", "0000000000000000"}},
           core::markdown::RelationshipExportMode::kTemplate,
           core::markdown::RelationshipIdentityFormat::kId);
     }
@@ -134,27 +136,34 @@ int main() {
                << "\", \"field\": \"result\"},\n"
                << "    \"bindings\": \"header-derived\"\n"
                << "  }],\n"
-               << "  \"mutation_sources\": []\n"
+               << "  \"mutation_sources\": [{\"slug_id\": \"0000000000000000\", \"name\": \"stale test source\"}]\n"
                << "}\n";
     }
     {
       std::ofstream data(workbench_root / "data" / "records.csv", std::ios::binary);
-      data << legacy_serial_slug_id << "-result(Machine)," << second.slug_id << "-comment(Review)\n"
-           << "M-001,Ready\n"
-           << "M-001,Ready\n";
+      data << legacy_serial_slug_id << "-result(Machine)," << second.slug_id
+           << "-comment(Review)," << third.slug_id << "-result(Outcome),notes\n"
+           << "M-001,Ready,final,default\n"
+           << "M-001,Ready,final,\n"
+           << "M-001,Ready,final,default\n";
     }
-    const auto workbench = core::BuildRelationshipWorkbench(graph, workbench_root);
+    const auto workbench_graph = core::BuildChecklistGraph({first, second, third, fourth});
+    const auto workbench = core::BuildRelationshipWorkbench(workbench_graph, workbench_root);
     Assert(workbench.value("schema", "") == "chax-relationship-workbench-v1",
            "Workbench should identify its portable analysis schema");
     Assert(workbench["summary"].value("datasets", 0) == 1,
            "Workbench should analyze the declared CSV dataset");
-    Assert(workbench["summary"].value("orphan_rows", 99) == 0,
-           "Predicate, binding, and declared terminal edges should account for each row");
+    Assert(workbench["summary"].value("orphan_rows", 99) == 1,
+           "Rows with no declared connection should remain visible as orphan findings");
     bool found_lookup = false;
     bool found_column_binding = false;
     bool found_terminal = false;
     bool found_legacy_alias = false;
     bool found_constant = false;
+    bool found_repeated_literal = false;
+    bool found_high_fan_out = false;
+    bool found_mutation_target_missing = false;
+    bool found_orphan = false;
     for (const auto& edge : workbench["edges"]) {
       found_lookup = found_lookup || edge.value("class", "") == "lookup_key";
       found_column_binding = found_column_binding || edge.value("class", "") == "column_binding";
@@ -163,12 +172,32 @@ int main() {
     }
     for (const auto& finding : workbench["findings"]) {
       found_constant = found_constant || finding.value("code", "") == "CONSTANT_COLUMN";
+      found_repeated_literal = found_repeated_literal || finding.value("code", "") == "REPEATED_LITERAL";
+      found_high_fan_out = found_high_fan_out || finding.value("code", "") == "HIGH_FAN_OUT_LOOKUP_KEY";
+      found_mutation_target_missing = found_mutation_target_missing ||
+          finding.value("code", "") == "MUTATION_SOURCE_TARGET_MISSING";
+      if (finding.value("code", "") == "ORPHAN_ROW" &&
+          finding.value("node_id", "") == "row:" + fourth.address_id) {
+        found_orphan = finding.contains("details") &&
+            finding["details"].value("derived_checklist_order_excluded", false) &&
+            finding["details"].contains("unresolved_markdown_relationships") &&
+            finding["details"]["unresolved_markdown_relationships"].is_array() &&
+            finding["details"]["unresolved_markdown_relationships"].size() == 1;
+      }
     }
     Assert(found_lookup, "Workbench should expose a lookup-key edge");
     Assert(found_column_binding, "Workbench should expose header-derived bindings");
     Assert(found_terminal, "Workbench should expose declared terminal relationships");
     Assert(found_legacy_alias, "Workbench should expose legacy slug aliases rather than guessing by label");
     Assert(found_constant, "Workbench should identify constant dataset columns");
+    Assert(found_repeated_literal,
+           "Workbench should identify partially populated repeated literals separately from constants");
+    Assert(found_high_fan_out,
+           "Workbench should identify lookup fan-out by proportional checklist coverage");
+    Assert(found_mutation_target_missing,
+           "Workbench should name an invalid declared mutation target precisely");
+    Assert(found_orphan,
+           "Orphan findings should explain that derived checklist order was excluded");
     const auto workbench_dot = core::RenderRelationshipWorkbenchDot(workbench);
     Assert(workbench_dot.find("digraph relationship_workbench") != std::string::npos,
            "Workbench should export a DOT graph");

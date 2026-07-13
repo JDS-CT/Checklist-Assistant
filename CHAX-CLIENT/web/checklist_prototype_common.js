@@ -3517,6 +3517,7 @@
       const edges = Array.isArray(workbench?.edges) ? workbench.edges : [];
       const findings = Array.isArray(workbench?.findings) ? workbench.findings : [];
       const summary = workbench?.summary || {};
+      const nodeById = new Map(nodes.map((node) => [node.id, node]));
       const kinds = ["checklist_row", "dataset", "dataset_column", "mutation_source", "terminal", "external"];
       const labels = {
         checklist_row: "Checklist rows",
@@ -3588,6 +3589,54 @@
       const truncation = omitted.length
         ? `<div class="note">Overview shows the first ${maxPerKind} nodes in each lane; ${escapeHtml(omitted.join(", "))} are represented in the exported JSON/DOT but omitted here for legibility.</div>`
         : "";
+      const findingPriority = (finding) => {
+        if (finding.code === "ORPHAN_ROW") return 0;
+        if (finding.code === "COLUMN_BINDING_TARGET_MISSING") return 1;
+        if (finding.severity === "warning" || finding.severity === "error") return 2;
+        return 3;
+      };
+      const orderedFindings = [...findings].sort((left, right) =>
+        findingPriority(left) - findingPriority(right) || String(left.code || "").localeCompare(String(right.code || "")));
+      const findingInfo = (finding) => {
+        const details = finding?.details && typeof finding.details === "object" ? finding.details : {};
+        const target = nodeById.get(finding.node_id);
+        const context = target?.kind === "checklist_row"
+          ? `${target.title || "Checklist row"}${target.subtitle ? ` — ${target.subtitle}` : ""}`
+          : (details.header || details.path || details.slug_id || "");
+        const reasons = [];
+        if (finding.code === "ORPHAN_ROW") {
+          reasons.push("Checklist display order is intentionally not counted as a relationship.");
+          const unresolved = Array.isArray(details.unresolved_markdown_relationships)
+            ? details.unresolved_markdown_relationships : [];
+          if (unresolved.length) {
+            reasons.push(`Unresolved Markdown targets: ${unresolved.map((item) => `${item.predicate || "predicate"} → ${item.target_slug_id || "unknown"}`).join(", ")}.`);
+          }
+        } else if (finding.code === "CONSTANT_COLUMN") {
+          reasons.push(`All ${details.records ?? "?"} records contain one non-empty value (${details.characters ?? "?"} stored characters).`);
+        } else if (finding.code === "REPEATED_LITERAL") {
+          reasons.push(`${details.nonempty ?? "?"} of ${details.records ?? "?"} records contain one non-empty value; ${details.blank ?? "?"} are blank.`);
+        } else if (finding.code === "HIGH_FAN_OUT_LOOKUP_KEY") {
+          const coverage = Number(details.bound_row_coverage);
+          const percent = Number.isFinite(coverage) ? `${Math.round(coverage * 100)}%` : "a substantial share";
+          reasons.push(`${details.bound_columns ?? "?"} fields bind to ${details.bound_rows ?? "?"} of ${details.checklist_rows ?? "?"} rows (${percent}).`);
+        }
+        return { context, reasons };
+      };
+      const findingCards = orderedFindings.slice(0, 18).map((finding) => {
+        const info = findingInfo(finding);
+        const reasonHtml = info.reasons.length
+          ? `<details><summary>Why this appears</summary><div class="finding-context">${escapeHtml(info.reasons.join(" "))}</div></details>`
+          : "";
+        return `<article class="relationship-workbench-finding ${escapeHtmlAttr(String(finding.severity || "info"))}">
+          <strong class="finding-code">${escapeHtml(finding.code || "FINDING")}</strong>
+          <div>${escapeHtml(finding.message || "")}</div>
+          ${info.context ? `<div class="finding-context">${escapeHtml(info.context)}</div>` : ""}
+          ${reasonHtml}
+        </article>`;
+      }).join("");
+      const moreFindings = orderedFindings.length > 18
+        ? `<div class="note">${escapeHtml(String(orderedFindings.length - 18))} additional findings are listed below and in relationship-workbench.json.</div>`
+        : "";
       flowSummary.innerHTML = [
         `<span class="chip">${escapeHtml(String(summary.rows ?? 0))} rows</span>`,
         `<span class="chip">${escapeHtml(String(summary.predicate_edges ?? 0))} predicate edges</span>`,
@@ -3595,10 +3644,13 @@
         `<span class="chip">${escapeHtml(String(summary.datasets ?? 0))} datasets</span>`,
         `<span class="chip">${escapeHtml(String(summary.orphan_rows ?? 0))} orphan rows</span>`,
       ].join("");
-      flowCanvas.innerHTML = `${truncation}<div class="relationship-workbench-map"><svg viewBox="0 0 ${width} ${height}" role="img" aria-label="Relationship Workbench graph"><defs><marker id="workbenchArrow" markerWidth="8" markerHeight="8" refX="7" refY="3" orient="auto"><path d="M0,0 L0,6 L7,3 z"></path></marker></defs>${svgLanes}${svgEdges}${svgNodes}</svg></div>`;
-      const visibleFindings = findings.slice(0, 120);
+      flowCanvas.innerHTML = `${truncation}<section class="relationship-workbench-findings"><h3>Findings</h3>${findingCards || "<div class=\"note\">No relationship findings.</div>"}</section>${moreFindings}<div class="relationship-workbench-map"><svg viewBox="0 0 ${width} ${height}" role="img" aria-label="Relationship Workbench graph"><defs><marker id="workbenchArrow" markerWidth="8" markerHeight="8" refX="7" refY="3" orient="auto"><path d="M0,0 L0,6 L7,3 z"></path></marker></defs>${svgLanes}${svgEdges}${svgNodes}</svg></div>`;
+      const visibleFindings = orderedFindings.slice(0, 120);
       flowEdges.innerHTML = visibleFindings.length
-        ? visibleFindings.map((finding) => `<li><strong>${escapeHtml(finding.code || "FINDING")}</strong> — ${escapeHtml(finding.message || "")}</li>`).join("")
+        ? visibleFindings.map((finding) => {
+          const info = findingInfo(finding);
+          return `<li><strong>${escapeHtml(finding.code || "FINDING")}</strong> — ${escapeHtml(finding.message || "")}${info.context ? ` <span class="note">${escapeHtml(info.context)}</span>` : ""}</li>`;
+        }).join("")
         : "<li>No relationship findings.</li>";
       if (findings.length > visibleFindings.length) {
         flowEdges.insertAdjacentHTML("beforeend", `<li class="note">${escapeHtml(String(findings.length - visibleFindings.length))} additional findings are available in the exported relationship-workbench.json.</li>`);

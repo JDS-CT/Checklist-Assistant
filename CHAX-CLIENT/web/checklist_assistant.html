@@ -389,6 +389,14 @@
     .relationship-workbench-map text { fill: var(--text); font-family: var(--font-sans); font-size: 11px; pointer-events: none; }
     .relationship-workbench-map .workbench-subtext { fill: var(--muted); font-size: 9px; }
     .relationship-workbench-map .workbench-lane { fill: var(--muted); font-weight: 700; font-size: 12px; }
+    .relationship-workbench-findings { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 8px; margin: 0 0 12px; }
+    .relationship-workbench-findings h3 { grid-column: 1 / -1; margin: 0; font-size: 14px; }
+    .relationship-workbench-finding { border-left: 3px solid var(--accent-cool-strong); border-radius: 6px; background: var(--details-panel-bg); padding: 8px 10px; font-size: 12px; overflow-wrap: anywhere; }
+    .relationship-workbench-finding.warning { border-left-color: var(--warn); }
+    .relationship-workbench-finding .finding-code { display: block; font-size: 11px; color: var(--muted); margin-bottom: 4px; }
+    .relationship-workbench-finding .finding-context { margin-top: 5px; color: var(--muted); }
+    .relationship-workbench-finding details { margin-top: 6px; }
+    .relationship-workbench-finding summary { cursor: pointer; color: var(--accent-cool-strong); }
     .flow-workspace {
       display: grid;
       grid-template-columns: minmax(0, 1fr) minmax(250px, 320px);
