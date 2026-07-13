@@ -8,6 +8,21 @@ The Relationship Workbench is an analysis and visualization surface. It makes ex
 - It does not require a domain-specific machine, customer, contract, or service schema.
 - It does not rewrite a CSV, add a runtime gate, or create a profile table merely because it finds a candidate.
 
+## Import Lineage and Asset Locality
+
+Markdown and CSV keep their historical IDs. When an instance is materialized,
+an ordinary relationship target with one declared `slugPredecessor` or
+`slugSuccessor` path to a current row is derived to that current address. The
+stored template triple remains unchanged; a lineage declaration itself is not
+turned into a resolved self-edge. A branch, cycle, absent current row, or
+human-label resemblance is not enough to redirect a target.
+
+Prefill data is resolved from the ownership record of the addressed checklist
+row: `<source_path>/<pack>/<checklist_dir>/data/`. An owned checklist never
+falls through to a same-named checklist in the staged public runtime, because
+that could silently use the wrong customer or deployment data. Legacy rows
+without ownership retain the public-library lookup fallback.
+
 ## Checklist Relationship Directory
 
 Relationships are a first-class part of a checklist package. The canonical
@@ -146,7 +161,7 @@ checklist use.
 
 | Code | Severity | Exact trigger | Recommended conclusion |
 | --- | --- | --- | --- |
-| `CONSTANT_COLUMN` | info | Every dataset record has the same non-empty value in this column. | The value may belong in a dataset-level default or dictionary entry. Keep the CSV unchanged until a migration is chosen. |
+| `CONSTANT_COLUMN` | info | Every dataset record has the same non-empty value in this column. | The finding carries a non-mutating normalization recommendation: consider a named reference record/dictionary, retain the column through a reviewed migration, then bind consumers explicitly. Keep the CSV unchanged until that migration is chosen. |
 | `REPEATED_LITERAL` | info | A non-empty literal repeats in every populated cell, but some records leave the column blank. | A default-with-override or dictionary candidate exists; blanks may carry meaning and must be reviewed. |
 | `HIGH_FAN_OUT_LOOKUP_KEY` | info | One declared lookup provides at least three bound fields and reaches at least one quarter of the current checklist rows. | The lookup is a major operational dependency worth documenting, testing, and considering for a future normalized profile. This measures lookup bindings only, never arbitrary predicate density. |
 | `RELATIONSHIP_PACKAGE_MISSING` | warning | `relationships/bindings.json` is absent. | The legacy checklist still loads, but its binding/completeness model has not been declared. |

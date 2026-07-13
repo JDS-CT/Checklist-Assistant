@@ -508,6 +508,80 @@ int main() {
            "Chain import should preserve all slugPredecessor entries");
     RecordStep(current_step, true, "lineage chain ok");
 
+    current_step = "lineage target resolution";
+    const std::string target_resolution_checklist = "lineage-target-resolution";
+    const std::string target_resolution_section = "Section R";
+    const std::string target_resolution_instr = "Instr R";
+    const auto target_resolution_source = core::ComputeSlugId(
+        target_resolution_checklist, target_resolution_section, "Source", "Enter serial",
+        "10 digits", target_resolution_instr);
+    const auto target_resolution_current = core::ComputeSlugId(
+        target_resolution_checklist, target_resolution_section, "Target", "Receive prefill",
+        "Current", target_resolution_instr);
+    const auto target_resolution_legacy = core::ComputeSlugId(
+        target_resolution_checklist, target_resolution_section, "Target", "Receive prefill",
+        "Legacy", target_resolution_instr);
+    const std::string target_resolution_md =
+        "# Checklist: " + target_resolution_checklist + "\n\n" +
+        "## Section: " + target_resolution_section + "\n\n" +
+        "### Procedure: Source\n"
+        "- Action: Enter serial\n"
+        "- Spec: 10 digits\n"
+        "- Result: \n"
+        "- Status: \n"
+        "- Comment: \n\n"
+        "#### Instructions\n" + target_resolution_instr + "\n"
+        "#### Relationships\n"
+        "- " + target_resolution_source + "\n"
+        "- ResultSearchPrefillResult " + target_resolution_legacy + "\n\n"
+        "### Procedure: Target\n"
+        "- Action: Receive prefill\n"
+        "- Spec: Current\n"
+        "- Result: \n"
+        "- Status: \n"
+        "- Comment: \n\n"
+        "#### Instructions\n" + target_resolution_instr + "\n"
+        "#### Relationships\n"
+        "- " + target_resolution_current + "\n"
+        "- slugPredecessor " + target_resolution_legacy + "\n";
+    const std::string target_resolution_principal = "lineage-target||http-test";
+    const auto target_resolution_import = client.Post(
+        "/api/v1/import/markdown", target_resolution_md,
+        {{"checklist", target_resolution_checklist},
+         {"instance_principal", target_resolution_principal}},
+        "text/markdown", auth_headers);
+    Assert(target_resolution_import.status == 200,
+           "Lineage target import should return 200");
+    const auto target_resolution_json = nlohmann::json::parse(
+        target_resolution_import.body, nullptr, /*allow_exceptions=*/false);
+    Assert(target_resolution_json.value("ok", false),
+           "Lineage target import should set ok=true");
+    const std::string target_resolution_instance =
+        target_resolution_json["data"].value("instance_id", "");
+    Assert(!target_resolution_instance.empty(),
+           "Lineage target import must return instance_id");
+    const auto target_resolution_graph = client.Get(
+        "/api/v1/relationships/address/" +
+            core::ComposeAddressId(target_resolution_source, target_resolution_instance),
+        {}, auth_headers);
+    Assert(target_resolution_graph.status == 200,
+           "Lineage target relationship graph should return 200");
+    const auto target_resolution_graph_json = nlohmann::json::parse(
+        target_resolution_graph.body, nullptr, /*allow_exceptions=*/false);
+    bool found_resolved_target = false;
+    for (const auto& edge :
+         target_resolution_graph_json["data"].value("outgoing", nlohmann::json::array())) {
+      if (edge.value("predicate", "") == "ResultSearchPrefillResult" &&
+          edge.value("target", "") ==
+              core::ComposeAddressId(target_resolution_current, target_resolution_instance)) {
+        found_resolved_target = true;
+        break;
+      }
+    }
+    Assert(found_resolved_target,
+           "Legacy relationship targets should resolve to their declared current slug");
+    RecordStep(current_step, true, "lineage target resolution ok");
+
     // JSONL import for instance data.
     current_step = "jsonl import";
     const std::string jsonl_update =

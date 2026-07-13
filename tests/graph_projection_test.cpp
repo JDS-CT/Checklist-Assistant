@@ -164,6 +164,7 @@ int main() {
     bool found_high_fan_out = false;
     bool found_mutation_target_missing = false;
     bool found_orphan = false;
+    bool found_constant_recommendation = false;
     for (const auto& edge : workbench["edges"]) {
       found_lookup = found_lookup || edge.value("class", "") == "lookup_key";
       found_column_binding = found_column_binding || edge.value("class", "") == "column_binding";
@@ -171,7 +172,12 @@ int main() {
       found_legacy_alias = found_legacy_alias || edge.value("class", "") == "legacy_alias";
     }
     for (const auto& finding : workbench["findings"]) {
-      found_constant = found_constant || finding.value("code", "") == "CONSTANT_COLUMN";
+      if (finding.value("code", "") == "CONSTANT_COLUMN") {
+        found_constant = true;
+        found_constant_recommendation =
+            finding["details"].value("recommendation", "").find("future normalization") !=
+            std::string::npos;
+      }
       found_repeated_literal = found_repeated_literal || finding.value("code", "") == "REPEATED_LITERAL";
       found_high_fan_out = found_high_fan_out || finding.value("code", "") == "HIGH_FAN_OUT_LOOKUP_KEY";
       found_mutation_target_missing = found_mutation_target_missing ||
@@ -190,6 +196,8 @@ int main() {
     Assert(found_terminal, "Workbench should expose declared terminal relationships");
     Assert(found_legacy_alias, "Workbench should expose legacy slug aliases rather than guessing by label");
     Assert(found_constant, "Workbench should identify constant dataset columns");
+    Assert(found_constant_recommendation,
+           "Constant-column findings should offer a non-mutating normalization path");
     Assert(found_repeated_literal,
            "Workbench should identify partially populated repeated literals separately from constants");
     Assert(found_high_fan_out,

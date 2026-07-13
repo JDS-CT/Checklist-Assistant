@@ -2235,65 +2235,120 @@ struct PrefillDatasetMatch {
   std::string matched_slug_id;
 };
 
-std::optional<PrefillDatasetMatch> FindPrefillDatasetMatch(const std::string& checklist,
-                                                           const std::vector<std::string>& slug_ids,
-                                                           const std::string& address_id) {
-  const fs::path library_root = core::ResolveLibraryRoot();
+std::optional<PrefillDatasetMatch> FindPrefillDatasetInDataRoot(
+    const fs::path& data_root, const std::string& checklist,
+    const std::vector<std::string>& slug_ids, const std::string& address_id,
+    std::string_view mode_prefix, bool include_checklist_fallback) {
   std::error_code ec;
-  fs::path fallback;
-  for (const auto& pack_root : core::ListPackRoots(library_root)) {
-    const fs::path checklist_dir = pack_root / checklist;
-    if (!fs::exists(checklist_dir, ec) || !fs::is_directory(checklist_dir, ec)) {
-      continue;
-    }
-    const fs::path data_root = checklist_dir / "data";
-    if (!fs::exists(data_root, ec) || !fs::is_directory(data_root, ec)) {
-      continue;
-    }
-    if (!address_id.empty()) {
-      const fs::path address_specific = data_root / (address_id + ".csv");
-      if (fs::exists(address_specific, ec)) {
-        return PrefillDatasetMatch{address_specific, "address", {}};
-      }
-    }
-    const std::string primary_slug = slug_ids.empty() ? "" : slug_ids.front();
-    for (const auto& slug_id : slug_ids) {
-      if (slug_id.empty()) {
-        continue;
-      }
-      const bool is_predecessor = slug_id != primary_slug && !primary_slug.empty();
-      const fs::path slug_specific = data_root / (slug_id + ".csv");
-      if (fs::exists(slug_specific, ec)) {
-        return PrefillDatasetMatch{
-            slug_specific, is_predecessor ? "slug_predecessor" : "slug", slug_id};
-      }
-      const fs::path legacy_slug_specific = data_root / (checklist + "." + slug_id + ".csv");
-      if (fs::exists(legacy_slug_specific, ec)) {
-        return PrefillDatasetMatch{legacy_slug_specific,
-                                   is_predecessor ? "slug_predecessor_legacy" : "slug_legacy",
-                                   slug_id};
-      }
-    }
-    const fs::path checklist_default = data_root / (checklist + ".csv");
-    if (fallback.empty() && fs::exists(checklist_default, ec)) {
-      fallback = checklist_default;
+  if (!fs::exists(data_root, ec) || !fs::is_directory(data_root, ec)) {
+    return std::nullopt;
+  }
+  if (!address_id.empty()) {
+    const fs::path address_specific = data_root / (address_id + ".csv");
+    if (fs::exists(address_specific, ec)) {
+      return PrefillDatasetMatch{address_specific, std::string(mode_prefix) + "address", {}};
     }
   }
-
-  if (!fallback.empty()) {
-    return PrefillDatasetMatch{fallback, "checklist", {}};
+  const std::string primary_slug = slug_ids.empty() ? "" : slug_ids.front();
+  for (const auto& slug_id : slug_ids) {
+    if (slug_id.empty()) {
+      continue;
+    }
+    const bool is_predecessor = slug_id != primary_slug && !primary_slug.empty();
+    const fs::path slug_specific = data_root / (slug_id + ".csv");
+    if (fs::exists(slug_specific, ec)) {
+      return PrefillDatasetMatch{slug_specific,
+                                 std::string(mode_prefix) +
+                                     (is_predecessor ? "slug_predecessor" : "slug"),
+                                 slug_id};
+    }
+    const fs::path legacy_slug_specific = data_root / (checklist + "." + slug_id + ".csv");
+    if (fs::exists(legacy_slug_specific, ec)) {
+      return PrefillDatasetMatch{legacy_slug_specific,
+                                 std::string(mode_prefix) +
+                                     (is_predecessor ? "slug_predecessor_legacy" : "slug_legacy"),
+                                 slug_id};
+    }
+  }
+  if (include_checklist_fallback) {
+    const fs::path checklist_default = data_root / (checklist + ".csv");
+    if (fs::exists(checklist_default, ec)) {
+      return PrefillDatasetMatch{checklist_default, std::string(mode_prefix) + "checklist", {}};
+    }
   }
   return std::nullopt;
 }
 
+std::optional<PrefillDatasetMatch> FindPrefillDatasetMatch(
+    const std::string& checklist, const std::vector<std::string>& slug_ids,
+    const std::string& address_id, const std::optional<ChecklistOwnership>& ownership = std::nullopt) {
+  if (ownership && !ownership->source_path.empty() && !ownership->pack.empty() &&
+      !ownership->checklist_dir.empty()) {
+    // An imported asset owns its data.  Do not fall through to a same-named checklist
+    // in the staged public library when that owner's data root is absent.
+    return FindPrefillDatasetInDataRoot(fs::path(ownership->source_path) / ownership->pack /
+                                            ownership->checklist_dir / "data",
+                                        checklist, slug_ids, address_id, "owned_", true);
+  }
+
+  const fs::path library_root = core::ResolveLibraryRoot();
+  std::optional<PrefillDatasetMatch> fallback;
+  for (const auto& pack_root : core::ListPackRoots(library_root)) {
+    const fs::path data_root = pack_root / checklist / "data";
+    if (const auto match =
+            FindPrefillDatasetInDataRoot(data_root, checklist, slug_ids, address_id, "", false)) {
+      return match;
+    }
+    if (!fallback) {
+      std::error_code ec;
+      const fs::path checklist_default = data_root / (checklist + ".csv");
+      if (fs::exists(checklist_default, ec)) {
+        fallback = PrefillDatasetMatch{checklist_default, "checklist", {}};
+      }
+    }
+  }
+
+  return fallback;
+}
+
 std::optional<fs::path> FindPrefillDatasetPath(const std::string& checklist,
                                                const std::vector<std::string>& slug_ids,
-                                               const std::string& address_id) {
-  const auto match = FindPrefillDatasetMatch(checklist, slug_ids, address_id);
+                                               const std::string& address_id,
+                                               const std::optional<ChecklistOwnership>& ownership = std::nullopt) {
+  const auto match = FindPrefillDatasetMatch(checklist, slug_ids, address_id, ownership);
   if (!match) {
     return std::nullopt;
   }
   return match->path;
+}
+
+std::optional<ChecklistOwnership> FindNewestOwnershipForAddressUnlocked(
+    sqlite3* db, const std::string& address_id) {
+  if (address_id.empty()) {
+    return std::nullopt;
+  }
+  sqlite3_stmt* stmt = nullptr;
+  const std::string sql =
+      "SELECT source_name, COALESCE(source_path, ''), pack, checklist_dir, checklist "
+      "FROM address_ownership WHERE address_id=? "
+      "ORDER BY updated_at DESC, source_name, pack, checklist_dir LIMIT 1;";
+  if (Prepare(db, sql, &stmt) != SQLITE_OK) {
+    Finalize(stmt);
+    return std::nullopt;
+  }
+  sqlite3_bind_text(stmt, 1, address_id.c_str(), -1, SQLITE_TRANSIENT);
+  std::optional<ChecklistOwnership> ownership;
+  if (sqlite3_step(stmt) == SQLITE_ROW) {
+    ChecklistOwnership value;
+    value.source_name = ColumnText(stmt, 0);
+    value.source_path = ColumnText(stmt, 1);
+    value.pack = ColumnText(stmt, 2);
+    value.checklist_dir = ColumnText(stmt, 3);
+    value.checklist = ColumnText(stmt, 4);
+    ownership = std::move(value);
+  }
+  Finalize(stmt);
+  return ownership;
 }
 
 bool ValuesMatch(const std::string& left, const std::string& right) {
@@ -3767,7 +3822,12 @@ std::optional<PrefillDatasetStatus> ChecklistStore::GetPrefillDatasetStatus(
   const auto template_relationships = GetTemplateRelationshipsForChecklist(slug.checklist);
   const auto predecessors = BuildSlugPredecessorIndex(template_relationships);
   const auto candidates = CollectSlugLineageCandidates(predecessors, slug.slug_id);
-  const auto match = FindPrefillDatasetMatch(slug.checklist, candidates, address_id);
+  std::optional<ChecklistOwnership> ownership;
+  {
+    std::lock_guard<std::mutex> lock(mutex_);
+    ownership = FindNewestOwnershipForAddressUnlocked(db_, address_id);
+  }
+  const auto match = FindPrefillDatasetMatch(slug.checklist, candidates, address_id, ownership);
   PrefillDatasetStatus status;
   if (!match) {
     status.mode = "missing";
@@ -4692,8 +4752,9 @@ void ChecklistStore::ApplyUpdate(const SlugUpdate& update) {
           LoadTemplateRelationshipsForChecklist(db_, mutated.checklist);
       const auto predecessors = BuildSlugPredecessorIndex(template_relationships);
       const auto subject_candidates = CollectSlugLineageCandidates(predecessors, mutated.slug_id);
+      const auto ownership = FindNewestOwnershipForAddressUnlocked(db_, mutated.address_id);
       const auto dataset_path =
-          FindPrefillDatasetPath(mutated.checklist, subject_candidates, mutated.address_id);
+          FindPrefillDatasetPath(mutated.checklist, subject_candidates, mutated.address_id, ownership);
       if (!dataset_path) {
         LogWarn("Prefill dataset not found for checklist '" + mutated.checklist + "'");
       } else {

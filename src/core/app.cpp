@@ -1881,6 +1881,22 @@ SlugLineageAliases BuildSlugLineageAliases(
   return result;
 }
 
+std::optional<std::string> ResolveTemplateTargetForInstance(
+    const TemplateRelationship& relationship, const SlugLineageAliases& lineage) {
+  const auto it = lineage.aliases.find(relationship.target_slug_id);
+  if (it == lineage.aliases.end()) {
+    return relationship.target_slug_id;
+  }
+
+  // A lineage declaration remains template metadata.  Its legacy target was not an
+  // address-level edge before resolution, and resolving it would create a self-edge.
+  if (relationship.predicate == kSlugPredecessorPredicate ||
+      relationship.predicate == kSlugSuccessorPredicate) {
+    return std::nullopt;
+  }
+  return it->second;
+}
+
 struct AddressLineageAliases {
   std::unordered_map<std::string, std::string> aliases;
   json warnings = json::array();
@@ -4937,6 +4953,11 @@ void ConfigureServer(platform::HttpServer& server, ChecklistStore& store, OAuthS
           store, parsed.checklist, template_subjects, parsed.template_relationships);
       store.ReplaceTemplateRelationshipsForSubjects(template_subjects,
                                                     merged_template_relationships);
+      const auto lineage_aliases =
+          BuildSlugLineageAliases(parsed.slugs, merged_template_relationships);
+      for (const auto& warning : lineage_aliases.warnings) {
+        warnings.push_back(warning);
+      }
 
       std::unordered_map<std::string, std::vector<core::RelationshipEdge>> address_edges;
       address_edges.reserve(parsed.slugs.size() + parsed.address_relationships.size());
@@ -4946,7 +4967,11 @@ void ConfigureServer(platform::HttpServer& server, ChecklistStore& store, OAuthS
       }
       for (const auto& rel : merged_template_relationships) {
         const std::string subject_address = core::ComposeAddressId(rel.subject_slug_id, instance_id);
-        const std::string target_address = core::ComposeAddressId(rel.target_slug_id, instance_id);
+        const auto target_slug_id = ResolveTemplateTargetForInstance(rel, lineage_aliases);
+        if (!target_slug_id) {
+          continue;
+        }
+        const std::string target_address = core::ComposeAddressId(*target_slug_id, instance_id);
         if (address_edges.find(subject_address) == address_edges.end()) {
           warnings.push_back(
               {{"code", "MISSING_SUBJECT"},
@@ -4960,7 +4985,7 @@ void ConfigureServer(platform::HttpServer& server, ChecklistStore& store, OAuthS
                               {"details", {{"slug_id", rel.subject_slug_id}}}});
           continue;
         }
-        if (!store.HasSlugForInstance(rel.target_slug_id, instance_id)) {
+        if (!store.HasSlugForInstance(*target_slug_id, instance_id)) {
           warnings.push_back({{"code", "MISSING_TARGET"},
                               {"message", "Target slug does not exist for instance."},
                               {"details", {{"slug_id", rel.target_slug_id}}}});
@@ -5524,6 +5549,11 @@ void ConfigureServer(platform::HttpServer& server, ChecklistStore& store, OAuthS
       const auto merged_template_relationships =
           MergeTemplateRelationshipsWithLineage(store, parsed.checklist, subjects, parsed.template_relationships);
       store.ReplaceTemplateRelationshipsForSubjects(subjects, merged_template_relationships);
+      const auto lineage_aliases =
+          BuildSlugLineageAliases(parsed.slugs, merged_template_relationships);
+      for (const auto& warning : lineage_aliases.warnings) {
+        warnings.push_back(warning);
+      }
 
       std::unordered_map<std::string, std::vector<core::RelationshipEdge>> address_edges;
       address_edges.reserve(parsed.slugs.size() + parsed.address_relationships.size());
@@ -5533,7 +5563,11 @@ void ConfigureServer(platform::HttpServer& server, ChecklistStore& store, OAuthS
       }
       for (const auto &rel : merged_template_relationships) {
         const std::string subject_address = core::ComposeAddressId(rel.subject_slug_id, instance_id);
-        const std::string target_address = core::ComposeAddressId(rel.target_slug_id, instance_id);
+        const auto target_slug_id = ResolveTemplateTargetForInstance(rel, lineage_aliases);
+        if (!target_slug_id) {
+          continue;
+        }
+        const std::string target_address = core::ComposeAddressId(*target_slug_id, instance_id);
         if (address_edges.find(subject_address) == address_edges.end()) {
           warnings.push_back({{"code", "MISSING_SUBJECT"},
                               {"message", "Subject slug not imported; skipping derived edge."},
@@ -5546,7 +5580,7 @@ void ConfigureServer(platform::HttpServer& server, ChecklistStore& store, OAuthS
                               {"details", {{"slug_id", rel.subject_slug_id}}}});
           continue;
         }
-        if (!store.HasSlugForInstance(rel.target_slug_id, instance_id)) {
+        if (!store.HasSlugForInstance(*target_slug_id, instance_id)) {
           warnings.push_back({{"code", "MISSING_TARGET"},
                               {"message", "Target slug does not exist for instance."},
                               {"details", {{"slug_id", rel.target_slug_id}}}});
@@ -5737,6 +5771,11 @@ void ConfigureServer(platform::HttpServer& server, ChecklistStore& store, OAuthS
           const auto merged_template_relationships = MergeTemplateRelationshipsWithLineage(
               store, parsed.checklist, subjects, parsed.template_relationships);
           store.ReplaceTemplateRelationshipsForSubjects(subjects, merged_template_relationships);
+          const auto lineage_aliases =
+              BuildSlugLineageAliases(parsed.slugs, merged_template_relationships);
+          for (const auto& warning : lineage_aliases.warnings) {
+            warnings.push_back(warning);
+          }
 
           std::unordered_map<std::string, std::vector<core::RelationshipEdge>> address_edges;
           address_edges.reserve(parsed.slugs.size() + parsed.address_relationships.size());
@@ -5747,8 +5786,12 @@ void ConfigureServer(platform::HttpServer& server, ChecklistStore& store, OAuthS
             for (const auto& rel : merged_template_relationships) {
               const std::string subject_address =
                   core::ComposeAddressId(rel.subject_slug_id, instance_id);
+              const auto target_slug_id = ResolveTemplateTargetForInstance(rel, lineage_aliases);
+              if (!target_slug_id) {
+                continue;
+              }
               const std::string target_address =
-                  core::ComposeAddressId(rel.target_slug_id, instance_id);
+                  core::ComposeAddressId(*target_slug_id, instance_id);
               if (address_edges.find(subject_address) == address_edges.end()) {
               warnings.push_back({{"code", "MISSING_SUBJECT"},
                                   {"message", "Subject slug not imported; skipping derived edge."},
@@ -5761,7 +5804,7 @@ void ConfigureServer(platform::HttpServer& server, ChecklistStore& store, OAuthS
                                   {"details", {{"slug_id", rel.subject_slug_id}}}});
               continue;
             }
-            if (!store.HasSlugForInstance(rel.target_slug_id, instance_id)) {
+            if (!store.HasSlugForInstance(*target_slug_id, instance_id)) {
               warnings.push_back({{"code", "MISSING_TARGET"},
                                   {"message", "Target slug does not exist for instance."},
                                   {"details", {{"slug_id", rel.target_slug_id}}}});

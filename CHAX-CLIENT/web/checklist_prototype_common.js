@@ -3620,6 +3620,9 @@
           const percent = Number.isFinite(coverage) ? `${Math.round(coverage * 100)}%` : "a substantial share";
           reasons.push(`${details.bound_columns ?? "?"} fields bind to ${details.bound_rows ?? "?"} of ${details.checklist_rows ?? "?"} rows (${percent}).`);
         }
+        if (typeof details.recommendation === "string" && details.recommendation.trim()) {
+          reasons.push(`Suggested next step: ${details.recommendation.trim()}`);
+        }
         return { context, reasons };
       };
       const findingCards = orderedFindings.slice(0, 18).map((finding) => {
