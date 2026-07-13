@@ -1,14 +1,24 @@
 #include "core/graph_projection.hpp"
 
+#include "core/checklist_markdown.hpp"
+
 #include <algorithm>
 #include <cctype>
 #include <cstdlib>
+#include <exception>
+#include <filesystem>
+#include <fstream>
+#include <iterator>
 #include <map>
+#include <optional>
 #include <sstream>
 #include <string_view>
 #include <tuple>
 #include <unordered_map>
+#include <unordered_set>
 #include <utility>
+
+#include "nlohmann/json.hpp"
 
 namespace core {
 namespace {
@@ -17,6 +27,8 @@ constexpr std::string_view kSlugSuccessorPredicate = "slugSuccessor";
 constexpr std::string_view kSlugPredecessorPredicate = "slugPredecessor";
 constexpr std::string_view kAddressSuccessorPredicate = "addressSuccessor";
 constexpr std::string_view kAddressPredecessorPredicate = "addressPredecessor";
+
+using nlohmann::json;
 
 std::string Trim(std::string value) {
   const auto is_space = [](unsigned char ch) { return std::isspace(ch) != 0; };
@@ -169,6 +181,136 @@ std::string DotShapeFor(const std::string& visual_shape) {
   }
   if (visual_shape == "metric") {
     return "note";
+  }
+  return "box";
+}
+
+std::string ShortLabel(const std::string& value, std::size_t limit = 80) {
+  if (value.size() <= limit) {
+    return value;
+  }
+  return value.substr(0, limit - 3) + "...";
+}
+
+bool IsSafeRelativePath(const std::filesystem::path& value) {
+  if (value.empty() || value.is_absolute() || value.has_root_name()) {
+    return false;
+  }
+  for (const auto& part : value) {
+    if (part == "..") {
+      return false;
+    }
+  }
+  return true;
+}
+
+std::vector<std::vector<std::string>> ParseCsv(const std::string& input) {
+  std::vector<std::vector<std::string>> rows;
+  std::vector<std::string> row;
+  std::string cell;
+  bool quoted = false;
+  for (std::size_t index = 0; index < input.size(); ++index) {
+    const char ch = input[index];
+    if (quoted) {
+      if (ch == '"') {
+        if (index + 1 < input.size() && input[index + 1] == '"') {
+          cell.push_back('"');
+          ++index;
+        } else {
+          quoted = false;
+        }
+      } else {
+        cell.push_back(ch);
+      }
+      continue;
+    }
+    if (ch == '"' && cell.empty()) {
+      quoted = true;
+    } else if (ch == ',') {
+      row.push_back(std::move(cell));
+      cell.clear();
+    } else if (ch == '\n') {
+      if (!cell.empty() && cell.back() == '\r') {
+        cell.pop_back();
+      }
+      row.push_back(std::move(cell));
+      cell.clear();
+      rows.push_back(std::move(row));
+      row.clear();
+    } else {
+      cell.push_back(ch);
+    }
+  }
+  if (!cell.empty() || !row.empty()) {
+    if (!cell.empty() && cell.back() == '\r') {
+      cell.pop_back();
+    }
+    row.push_back(std::move(cell));
+    rows.push_back(std::move(row));
+  }
+  if (!rows.empty() && !rows.front().empty() && rows.front().front().size() >= 3 &&
+      static_cast<unsigned char>(rows.front().front()[0]) == 0xEF &&
+      static_cast<unsigned char>(rows.front().front()[1]) == 0xBB &&
+      static_cast<unsigned char>(rows.front().front()[2]) == 0xBF) {
+    rows.front().front().erase(0, 3);
+  }
+  return rows;
+}
+
+std::optional<std::pair<std::string, std::string>> ParseHeaderDerivedBinding(
+    const std::string& header) {
+  const auto separator = header.find('-');
+  if (separator != 16 || header.size() <= separator + 1) {
+    return std::nullopt;
+  }
+  const std::string slug_id = header.substr(0, separator);
+  for (const char ch : slug_id) {
+    if (std::isalnum(static_cast<unsigned char>(ch)) == 0) {
+      return std::nullopt;
+    }
+  }
+  const auto label_start = header.find('(', separator + 1);
+  const std::string field = header.substr(separator + 1,
+                                          label_start == std::string::npos
+                                              ? std::string::npos
+                                              : label_start - separator - 1);
+  if (field != "result" && field != "status" && field != "comment") {
+    return std::nullopt;
+  }
+  return std::make_pair(slug_id, field);
+}
+
+std::string NodeColorFor(const std::string& kind) {
+  if (kind == "dataset") {
+    return "#e8f4ea";
+  }
+  if (kind == "dataset_column") {
+    return "#f5f7df";
+  }
+  if (kind == "terminal" || kind == "external") {
+    return "#fff4e5";
+  }
+  if (kind == "mutation_source") {
+    return "#f3e8ff";
+  }
+  return "#eaf1fb";
+}
+
+std::string NodeShapeFor(const std::string& kind) {
+  if (kind == "dataset") {
+    return "cylinder";
+  }
+  if (kind == "dataset_column") {
+    return "note";
+  }
+  if (kind == "terminal") {
+    return "oval";
+  }
+  if (kind == "external") {
+    return "component";
+  }
+  if (kind == "mutation_source") {
+    return "hexagon";
   }
   return "box";
 }
@@ -507,6 +649,462 @@ Ref: address_relationships.target_address_id > slugs.address_id
 Ref: history.address_id > slugs.address_id
 Ref: history.entity_id > entities.entity_id
 )dbml";
+}
+
+json BuildRelationshipWorkbench(const ChecklistGraph& graph,
+                                const std::filesystem::path& checklist_root) {
+  json nodes = json::array();
+  json edges = json::array();
+  json findings = json::array();
+  std::unordered_set<std::string> node_ids;
+  std::unordered_set<std::string> connected_addresses;
+  std::unordered_map<std::string, std::vector<std::string>> addresses_by_slug;
+  std::unordered_set<std::string> local_addresses;
+  std::size_t predicate_count = 0;
+  std::size_t binding_count = 0;
+  std::size_t dataset_count = 0;
+
+  const auto add_node = [&nodes, &node_ids](const std::string& id, const std::string& kind,
+                                             const std::string& title, const std::string& subtitle,
+                                             const json& details = json::object()) {
+    if (!node_ids.insert(id).second) {
+      return;
+    }
+    json node{{"id", id}, {"kind", kind}, {"title", title}, {"subtitle", subtitle}};
+    if (!details.empty()) {
+      node["details"] = details;
+    }
+    nodes.push_back(std::move(node));
+  };
+  const auto add_edge = [&edges](const std::string& source_id, const std::string& target_id,
+                                 const std::string& edge_class, const std::string& label,
+                                 const json& details = json::object()) {
+    json edge{{"source_id", source_id},
+              {"target_id", target_id},
+              {"class", edge_class},
+              {"label", label}};
+    if (!details.empty()) {
+      edge["details"] = details;
+    }
+    edges.push_back(std::move(edge));
+  };
+  const auto add_finding = [&findings](const std::string& code, const std::string& severity,
+                                       const std::string& message, const std::string& node_id,
+                                       const json& details = json::object()) {
+    json finding{{"code", code}, {"severity", severity}, {"message", message}};
+    if (!node_id.empty()) {
+      finding["node_id"] = node_id;
+    }
+    if (!details.empty()) {
+      finding["details"] = details;
+    }
+    findings.push_back(std::move(finding));
+  };
+
+  for (const auto& node : graph.nodes) {
+    const std::string node_id = "row:" + node.address_id;
+    add_node(node_id, "checklist_row", node.procedure,
+             node.action.empty() ? node.section : node.section + " · " + node.action,
+             {{"address_id", node.address_id}, {"slug_id", node.slug_id}, {"section", node.section}});
+    local_addresses.insert(node.address_id);
+    addresses_by_slug[node.slug_id].push_back(node.address_id);
+  }
+
+  for (const auto& edge : graph.edges) {
+    if (edge.kind != "relationship") {
+      continue;
+    }
+    const std::string source_id = "row:" + edge.source_address_id;
+    std::string target_id;
+    if (local_addresses.find(edge.target_address_id) != local_addresses.end()) {
+      target_id = "row:" + edge.target_address_id;
+      connected_addresses.insert(edge.target_address_id);
+    } else {
+      target_id = "external:" + edge.target_address_id;
+      add_node(target_id, "external", edge.target_address_id, edge.external_category,
+               {{"address_id", edge.target_address_id}});
+    }
+    add_edge(source_id, target_id, "predicate", edge.predicate,
+             {{"is_lineage", edge.is_lineage}, {"is_external", edge.is_external}});
+    connected_addresses.insert(edge.source_address_id);
+    ++predicate_count;
+  }
+
+  std::unordered_map<std::string, std::vector<std::string>> legacy_alias_slugs;
+  {
+    const auto markdown_path = checklist_root / "checklist.md";
+    std::ifstream input(markdown_path, std::ios::binary);
+    if (input) {
+      const std::string contents((std::istreambuf_iterator<char>(input)),
+                                 std::istreambuf_iterator<char>());
+      try {
+        const auto parsed = markdown::ParseChecklistMarkdown("", contents);
+        for (const auto& relationship : parsed.template_relationships) {
+          if (relationship.predicate == kSlugPredecessorPredicate) {
+            legacy_alias_slugs[relationship.target_slug_id].push_back(
+                relationship.subject_slug_id);
+          } else if (relationship.predicate == kSlugSuccessorPredicate) {
+            legacy_alias_slugs[relationship.subject_slug_id].push_back(
+                relationship.target_slug_id);
+          }
+        }
+      } catch (const std::exception& ex) {
+        add_finding("RELATIONSHIP_ALIAS_PARSE_FAILED", "warning",
+                    "Legacy relationship aliases could not be read from checklist.md.", "",
+                    {{"path", markdown_path.string()}, {"error", ex.what()}});
+      }
+    }
+  }
+  const auto resolve_addresses = [&addresses_by_slug, &legacy_alias_slugs](
+                                     const std::string& slug_id, std::string* alias_used) {
+    std::vector<std::string> resolved;
+    const auto direct = addresses_by_slug.find(slug_id);
+    if (direct != addresses_by_slug.end()) {
+      return direct->second;
+    }
+    const auto legacy = legacy_alias_slugs.find(slug_id);
+    if (legacy == legacy_alias_slugs.end()) {
+      return resolved;
+    }
+    if (alias_used) {
+      *alias_used = slug_id;
+    }
+    for (const auto& current_slug_id : legacy->second) {
+      const auto current = addresses_by_slug.find(current_slug_id);
+      if (current == addresses_by_slug.end()) {
+        continue;
+      }
+      resolved.insert(resolved.end(), current->second.begin(), current->second.end());
+    }
+    return resolved;
+  };
+  const auto render_legacy_alias = [&add_node, &add_edge](const std::string& legacy_slug_id,
+                                                           const std::vector<std::string>& addresses) {
+    if (legacy_slug_id.empty()) {
+      return;
+    }
+    const std::string alias_id = "legacy_alias:" + legacy_slug_id;
+    add_node(alias_id, "external", legacy_slug_id, "legacy slug alias",
+             {{"slug_id", legacy_slug_id}, {"role", "legacy_alias"}});
+    for (const auto& address_id : addresses) {
+      add_edge(alias_id, "row:" + address_id, "legacy_alias", "maps to current row",
+               {{"legacy_slug_id", legacy_slug_id}});
+    }
+  };
+
+  const auto relationship_directory = checklist_root / "relationships";
+  const auto bindings_path = relationship_directory / "bindings.json";
+  json declarations = json::object();
+  bool has_declarations = false;
+  {
+    std::ifstream input(bindings_path, std::ios::binary);
+    if (!input) {
+      add_finding("RELATIONSHIP_PACKAGE_MISSING", "warning",
+                  "No relationships/bindings.json was found; legacy rows remain visible but relationship completeness cannot be declared.",
+                  "", {{"path", bindings_path.string()}});
+    } else {
+      const std::string contents((std::istreambuf_iterator<char>(input)),
+                                 std::istreambuf_iterator<char>());
+      declarations = json::parse(contents, nullptr, false);
+      if (declarations.is_discarded() || !declarations.is_object()) {
+        add_finding("RELATIONSHIP_DECLARATIONS_INVALID", "error",
+                    "relationships/bindings.json is not a JSON object.", "",
+                    {{"path", bindings_path.string()}});
+        declarations = json::object();
+      } else {
+        has_declarations = true;
+        const std::string schema = declarations.value("schema", "");
+        if (schema != "chax-relationships-v1") {
+          add_finding("RELATIONSHIP_SCHEMA_UNSUPPORTED", "warning",
+                      "The relationship declaration schema is not chax-relationships-v1.", "",
+                      {{"schema", schema}, {"path", bindings_path.string()}});
+        }
+      }
+    }
+  }
+
+  if (has_declarations) {
+    const json terminal_rows = declarations.value("completeness", json::object())
+                                   .value("terminal_rows", json::array());
+    if (!terminal_rows.is_array()) {
+      add_finding("TERMINAL_ROWS_INVALID", "warning",
+                  "completeness.terminal_rows must be an array when present.", "");
+    } else {
+      for (const auto& terminal : terminal_rows) {
+        if (!terminal.is_object()) {
+          add_finding("TERMINAL_ROW_INVALID", "warning",
+                      "A terminal row declaration must be an object.", "");
+          continue;
+        }
+        const std::string slug_id = terminal.value("slug_id", "");
+        const std::string stakeholder = terminal.value("stakeholder", "");
+        const std::string reason = terminal.value("reason", "");
+        std::string legacy_alias;
+        const auto matching = resolve_addresses(slug_id, &legacy_alias);
+        if (slug_id.empty() || stakeholder.empty() || reason.empty() ||
+            matching.empty()) {
+          add_finding("TERMINAL_ROW_UNKNOWN", "warning",
+                      "A terminal relationship must name an imported row, stakeholder, and reason.", "",
+                      {{"slug_id", slug_id}, {"stakeholder", stakeholder}});
+          continue;
+        }
+        const std::string terminal_id = "terminal:" + slug_id;
+        add_node(terminal_id, "terminal", stakeholder, reason,
+                 {{"slug_id", slug_id}, {"stakeholder", stakeholder}, {"reason", reason}});
+        render_legacy_alias(legacy_alias, matching);
+        for (const auto& address_id : matching) {
+          add_edge("row:" + address_id, terminal_id, "declared_terminal", "terminal outcome",
+                   {{"stakeholder", stakeholder}, {"reason", reason}});
+          connected_addresses.insert(address_id);
+        }
+      }
+    }
+
+    const json mutation_sources = declarations.value("mutation_sources", json::array());
+    if (!mutation_sources.is_array()) {
+      add_finding("MUTATION_SOURCES_INVALID", "warning",
+                  "mutation_sources must be an array when present.", "");
+    } else {
+      std::size_t mutation_index = 0;
+      for (const auto& source : mutation_sources) {
+        if (!source.is_object()) {
+          continue;
+        }
+        const std::string slug_id = source.value("slug_id", "");
+        const std::string name = source.value("name", source.value("kind", "Declared mutation source"));
+        std::string legacy_alias;
+        const auto matching = resolve_addresses(slug_id, &legacy_alias);
+        if (slug_id.empty() || matching.empty()) {
+          add_finding("DIRECT_WRITE_UNDECLARED", "warning",
+                      "A mutation source does not identify an imported target row.", "",
+                      {{"slug_id", slug_id}, {"name", name}});
+          continue;
+        }
+        const std::string source_id = "mutation:" + std::to_string(mutation_index++);
+        add_node(source_id, "mutation_source", name, source.value("field", "mutable field"), source);
+        render_legacy_alias(legacy_alias, matching);
+        for (const auto& address_id : matching) {
+          add_edge(source_id, "row:" + address_id, "direct_write", source.value("field", "write"), source);
+          connected_addresses.insert(address_id);
+        }
+      }
+    }
+
+    const json datasets = declarations.value("datasets", json::array());
+    if (!datasets.is_array()) {
+      add_finding("DATASETS_INVALID", "warning", "datasets must be an array when present.", "");
+    } else {
+      for (std::size_t dataset_index = 0; dataset_index < datasets.size(); ++dataset_index) {
+        const json& dataset = datasets[dataset_index];
+        if (!dataset.is_object()) {
+          add_finding("DATASET_INVALID", "warning", "A dataset declaration must be an object.", "");
+          continue;
+        }
+        const std::string relative_path = dataset.value("path", "");
+        if (!IsSafeRelativePath(std::filesystem::path(relative_path))) {
+          add_finding("DATASET_PATH_INVALID", "warning",
+                      "A relationship dataset path must be a relative path inside the checklist package.", "",
+                      {{"path", relative_path}});
+          continue;
+        }
+        const auto data_path = checklist_root / std::filesystem::path(relative_path);
+        std::ifstream input(data_path, std::ios::binary);
+        if (!input) {
+          add_finding("DATASET_MISSING", "warning",
+                      "A declared relationship dataset could not be read.", "",
+                      {{"path", data_path.string()}});
+          continue;
+        }
+        const std::string contents((std::istreambuf_iterator<char>(input)),
+                                   std::istreambuf_iterator<char>());
+        const auto csv_rows = ParseCsv(contents);
+        if (csv_rows.empty() || csv_rows.front().empty()) {
+          add_finding("DATASET_EMPTY", "warning",
+                      "A declared relationship dataset has no CSV header row.", "",
+                      {{"path", relative_path}});
+          continue;
+        }
+
+        const std::string dataset_id = "dataset:" + std::to_string(dataset_index);
+        const auto& headers = csv_rows.front();
+        const std::size_t record_count = csv_rows.size() - 1;
+        add_node(dataset_id, "dataset", relative_path,
+                 std::to_string(record_count) + " records · " + std::to_string(headers.size()) + " columns",
+                 {{"path", relative_path}, {"records", record_count}, {"columns", headers.size()}});
+        ++dataset_count;
+
+        const json lookup = dataset.value("lookup", json::object());
+        if (lookup.is_object()) {
+          const std::string lookup_slug_id = lookup.value("slug_id", "");
+          const std::string lookup_field = lookup.value("field", "");
+          const std::string lookup_column = lookup.value("column", "");
+          std::string legacy_alias;
+          const auto matching = resolve_addresses(lookup_slug_id, &legacy_alias);
+          if (lookup_slug_id.empty() || lookup_field.empty() || lookup_column.empty() ||
+              matching.empty()) {
+            add_finding("LOOKUP_KEY_INVALID", "warning",
+                        "A dataset lookup must reference an imported slug, field, and source column.",
+                        dataset_id, {{"slug_id", lookup_slug_id}, {"column", lookup_column}});
+          } else {
+            render_legacy_alias(legacy_alias, matching);
+            for (const auto& address_id : matching) {
+              add_edge("row:" + address_id, dataset_id, "lookup_key",
+                       lookup_field + " selects " + lookup_column,
+                       {{"field", lookup_field}, {"column", lookup_column},
+                        {"legacy_slug_id", legacy_alias}});
+              connected_addresses.insert(address_id);
+              ++binding_count;
+            }
+          }
+        }
+
+        const bool header_derived = dataset.value("bindings", "") == "header-derived";
+        std::size_t bound_column_count = 0;
+        for (std::size_t column_index = 0; column_index < headers.size(); ++column_index) {
+          std::size_t nonempty_count = 0;
+          std::size_t character_count = 0;
+          std::unordered_set<std::string> distinct_values;
+          for (std::size_t row_index = 1; row_index < csv_rows.size(); ++row_index) {
+            const auto& row = csv_rows[row_index];
+            const std::string value = column_index < row.size() ? row[column_index] : "";
+            if (!value.empty()) {
+              ++nonempty_count;
+              character_count += value.size();
+              distinct_values.insert(value);
+            }
+          }
+          const std::string column_id = dataset_id + ":column:" + std::to_string(column_index);
+          add_node(column_id, "dataset_column", ShortLabel(headers[column_index]),
+                   std::to_string(nonempty_count) + "/" + std::to_string(record_count) +
+                       " populated · " + std::to_string(distinct_values.size()) + " distinct",
+                   {{"header", headers[column_index]},
+                    {"records", record_count},
+                    {"nonempty", nonempty_count},
+                    {"distinct", distinct_values.size()},
+                    {"characters", character_count}});
+          add_edge(dataset_id, column_id, "contains_column", "column");
+
+          if (record_count > 0 && nonempty_count == record_count && distinct_values.size() == 1) {
+            add_finding("CONSTANT_COLUMN", "info",
+                        "A dataset column has one value across every record.", column_id,
+                        {{"header", headers[column_index]}, {"records", record_count},
+                         {"characters", character_count}});
+          }
+          if (nonempty_count > 1 && distinct_values.size() == 1) {
+            add_finding("REPEATED_LITERAL", "info",
+                        "A dataset column repeats one non-empty literal value.", column_id,
+                        {{"header", headers[column_index]}, {"records", nonempty_count},
+                         {"characters", character_count}});
+          }
+
+          if (!header_derived) {
+            continue;
+          }
+          const auto parsed_binding = ParseHeaderDerivedBinding(headers[column_index]);
+          if (!parsed_binding) {
+            continue;
+          }
+          std::string legacy_alias;
+          const auto matching = resolve_addresses(parsed_binding->first, &legacy_alias);
+          if (matching.empty()) {
+            const std::string unresolved_id = "unresolved:" + parsed_binding->first + ":" + parsed_binding->second;
+            add_node(unresolved_id, "external", parsed_binding->first, parsed_binding->second,
+                     {{"slug_id", parsed_binding->first}, {"field", parsed_binding->second}});
+            add_edge(column_id, unresolved_id, "column_binding", parsed_binding->second);
+            add_finding("COLUMN_BINDING_TARGET_MISSING", "warning",
+                        "A header-derived binding does not match an imported checklist row.", column_id,
+                        {{"slug_id", parsed_binding->first}, {"field", parsed_binding->second}});
+            continue;
+          }
+          ++bound_column_count;
+          render_legacy_alias(legacy_alias, matching);
+          for (const auto& address_id : matching) {
+            add_edge(column_id, "row:" + address_id, "column_binding", parsed_binding->second,
+                     {{"slug_id", parsed_binding->first}, {"field", parsed_binding->second},
+                      {"legacy_slug_id", legacy_alias}});
+            connected_addresses.insert(address_id);
+            ++binding_count;
+          }
+        }
+        if (bound_column_count > 20) {
+          add_finding("HIGH_FAN_OUT_LOOKUP_KEY", "info",
+                      "One dataset lookup fans out to more than 20 header-derived checklist fields.",
+                      dataset_id, {{"bound_columns", bound_column_count}});
+        }
+      }
+    }
+  }
+
+  std::size_t orphan_count = 0;
+  for (const auto& node : graph.nodes) {
+    if (connected_addresses.find(node.address_id) != connected_addresses.end()) {
+      continue;
+    }
+    ++orphan_count;
+    add_finding("ORPHAN_ROW", "warning",
+                "This row has no predicate, lookup/binding, mutation, applicability, or declared terminal relationship.",
+                "row:" + node.address_id,
+                {{"address_id", node.address_id}, {"slug_id", node.slug_id}});
+  }
+
+  return {{"schema", "chax-relationship-workbench-v1"},
+          {"checklist", graph.checklist},
+          {"instance_id", graph.instance_id},
+          {"relationship_directory", relationship_directory.string()},
+          {"nodes", nodes},
+          {"edges", edges},
+          {"findings", findings},
+          {"summary",
+           {{"rows", graph.nodes.size()},
+            {"predicate_edges", predicate_count},
+            {"binding_edges", binding_count},
+            {"datasets", dataset_count},
+            {"orphan_rows", orphan_count}}}};
+}
+
+std::string RenderRelationshipWorkbenchDot(const json& workbench) {
+  std::ostringstream out;
+  out << "digraph relationship_workbench {\n"
+      << "  graph [rankdir=\"LR\", concentrate=\"true\", overlap=\"false\"];\n"
+      << "  node [style=\"rounded,filled\", fontname=\"Segoe UI\"];\n"
+      << "  edge [fontname=\"Segoe UI\", fontsize=\"10\", color=\"#61758a\"];\n\n";
+  std::unordered_map<std::string, std::size_t> indexes;
+  if (workbench.contains("nodes") && workbench["nodes"].is_array()) {
+    for (const auto& node : workbench["nodes"]) {
+      const std::string id = node.value("id", "");
+      if (id.empty()) {
+        continue;
+      }
+      const std::size_t index = indexes.size();
+      indexes.emplace(id, index);
+      const std::string kind = node.value("kind", "checklist_row");
+      const std::string title = node.value("title", id);
+      const std::string subtitle = node.value("subtitle", "");
+      out << "  n" << index << " [shape=\"" << NodeShapeFor(kind) << "\", fillcolor=\""
+          << NodeColorFor(kind) << "\", label=\"" << EscapeDot(ShortLabel(title));
+      if (!subtitle.empty()) {
+        out << "\\n" << EscapeDot(ShortLabel(subtitle));
+      }
+      out << "\"];\n";
+    }
+  }
+  out << "\n";
+  if (workbench.contains("edges") && workbench["edges"].is_array()) {
+    for (const auto& edge : workbench["edges"]) {
+      const auto source = indexes.find(edge.value("source_id", ""));
+      const auto target = indexes.find(edge.value("target_id", ""));
+      if (source == indexes.end() || target == indexes.end()) {
+        continue;
+      }
+      const std::string edge_class = edge.value("class", "relationship");
+      const std::string style = edge_class == "contains_column" ? "dotted" : "solid";
+      out << "  n" << source->second << " -> n" << target->second << " [label=\""
+          << EscapeDot(ShortLabel(edge.value("label", edge_class))) << "\", style=\"" << style
+          << "\"];\n";
+    }
+  }
+  out << "}\n";
+  return out.str();
 }
 
 }  // namespace core

@@ -1,9 +1,12 @@
+#include <filesystem>
+#include <fstream>
 #include <iostream>
 #include <stdexcept>
 #include <string>
 #include <vector>
 
 #include "core/checklist_store.hpp"
+#include "core/checklist_markdown.hpp"
 #include "core/graph_projection.hpp"
 
 namespace {
@@ -102,6 +105,74 @@ int main() {
     Assert(dbml.find("Ref: address_relationships.subject_address_id > slugs.address_id") !=
                std::string::npos,
            "DBML export should expose self-referential runtime relationship references");
+
+    const auto workbench_root = std::filesystem::temp_directory_path() / "chax-workbench-test";
+    const std::string legacy_serial_slug_id = "1234567890ABCDEF";
+    std::filesystem::remove_all(workbench_root);
+    std::filesystem::create_directories(workbench_root / "relationships");
+    std::filesystem::create_directories(workbench_root / "data");
+    {
+      std::ofstream markdown(workbench_root / "checklist.md", std::ios::binary);
+      markdown << core::markdown::ExportChecklistMarkdown(
+          checklist, {first, second, third},
+          {{first.slug_id, "slugPredecessor", legacy_serial_slug_id}},
+          core::markdown::RelationshipExportMode::kTemplate,
+          core::markdown::RelationshipIdentityFormat::kId);
+    }
+    {
+      std::ofstream bindings(workbench_root / "relationships" / "bindings.json", std::ios::binary);
+      bindings << "{\n"
+               << "  \"schema\": \"chax-relationships-v1\",\n"
+               << "  \"completeness\": {\"orphan_policy\": \"warn\", \"terminal_rows\": [\n"
+               << "    {\"slug_id\": \"" << third.slug_id
+               << "\", \"stakeholder\": \"handoff\", \"reason\": \"final record\"}\n"
+               << "  ]},\n"
+               << "  \"datasets\": [{\n"
+               << "    \"path\": \"data/records.csv\",\n"
+               << "    \"lookup\": {\"column\": \"" << legacy_serial_slug_id
+               << "-result(Machine)\", \"slug_id\": \"" << legacy_serial_slug_id
+               << "\", \"field\": \"result\"},\n"
+               << "    \"bindings\": \"header-derived\"\n"
+               << "  }],\n"
+               << "  \"mutation_sources\": []\n"
+               << "}\n";
+    }
+    {
+      std::ofstream data(workbench_root / "data" / "records.csv", std::ios::binary);
+      data << legacy_serial_slug_id << "-result(Machine)," << second.slug_id << "-comment(Review)\n"
+           << "M-001,Ready\n"
+           << "M-001,Ready\n";
+    }
+    const auto workbench = core::BuildRelationshipWorkbench(graph, workbench_root);
+    Assert(workbench.value("schema", "") == "chax-relationship-workbench-v1",
+           "Workbench should identify its portable analysis schema");
+    Assert(workbench["summary"].value("datasets", 0) == 1,
+           "Workbench should analyze the declared CSV dataset");
+    Assert(workbench["summary"].value("orphan_rows", 99) == 0,
+           "Predicate, binding, and declared terminal edges should account for each row");
+    bool found_lookup = false;
+    bool found_column_binding = false;
+    bool found_terminal = false;
+    bool found_legacy_alias = false;
+    bool found_constant = false;
+    for (const auto& edge : workbench["edges"]) {
+      found_lookup = found_lookup || edge.value("class", "") == "lookup_key";
+      found_column_binding = found_column_binding || edge.value("class", "") == "column_binding";
+      found_terminal = found_terminal || edge.value("class", "") == "declared_terminal";
+      found_legacy_alias = found_legacy_alias || edge.value("class", "") == "legacy_alias";
+    }
+    for (const auto& finding : workbench["findings"]) {
+      found_constant = found_constant || finding.value("code", "") == "CONSTANT_COLUMN";
+    }
+    Assert(found_lookup, "Workbench should expose a lookup-key edge");
+    Assert(found_column_binding, "Workbench should expose header-derived bindings");
+    Assert(found_terminal, "Workbench should expose declared terminal relationships");
+    Assert(found_legacy_alias, "Workbench should expose legacy slug aliases rather than guessing by label");
+    Assert(found_constant, "Workbench should identify constant dataset columns");
+    const auto workbench_dot = core::RenderRelationshipWorkbenchDot(workbench);
+    Assert(workbench_dot.find("digraph relationship_workbench") != std::string::npos,
+           "Workbench should export a DOT graph");
+    std::filesystem::remove_all(workbench_root);
     std::cout << "CHAX_STEP|graph_projection_test|native projection|Pass|graph projection and exports verified\n";
     return 0;
   } catch (const std::exception& ex) {

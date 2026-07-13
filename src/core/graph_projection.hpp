@@ -2,10 +2,12 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <filesystem>
 #include <string>
 #include <vector>
 
 #include "core/checklist_store.hpp"
+#include "nlohmann/json.hpp"
 
 namespace core {
 
@@ -49,5 +51,8 @@ ChecklistGraph BuildChecklistGraph(const std::vector<ChecklistSlug>& slugs);
 std::string RenderChecklistGraphDot(const ChecklistGraph& graph);
 std::string RenderChecklistGraphMermaid(const ChecklistGraph& graph);
 std::string RenderChecklistRuntimeSchemaDbml();
+nlohmann::json BuildRelationshipWorkbench(const ChecklistGraph& graph,
+                                         const std::filesystem::path& checklist_root);
+std::string RenderRelationshipWorkbenchDot(const nlohmann::json& workbench);
 
 }  // namespace core

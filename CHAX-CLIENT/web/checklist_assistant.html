@@ -373,6 +373,22 @@
     .flow-lint { display: grid; gap: 8px; }
     .flow-lint-item { border-left: 3px solid var(--warn); background: var(--details-panel-bg); padding: 8px 10px; font-size: 12px; }
     .flow-lint-item.info { border-left-color: var(--accent-cool-strong); }
+    .relationship-workbench-map { overflow: auto; border: 1px solid var(--border); border-radius: 8px; background: var(--details-panel-bg); }
+    .relationship-workbench-map svg { display: block; min-width: 1040px; }
+    .relationship-workbench-map .workbench-edge { fill: none; stroke: var(--accent-cool-strong); stroke-width: 1.35; opacity: 0.58; }
+    .relationship-workbench-map .workbench-edge.predicate { stroke: var(--muted-strong); }
+    .relationship-workbench-map .workbench-edge.lookup_key { stroke: var(--accent-cool-strong); stroke-width: 2; }
+    .relationship-workbench-map .workbench-edge.column_binding { stroke: var(--success); }
+    .relationship-workbench-map .workbench-edge.declared_terminal { stroke: var(--warn); stroke-dasharray: 5 3; }
+    .relationship-workbench-map .workbench-edge.contains_column { stroke: var(--border); stroke-dasharray: 2 4; }
+    .relationship-workbench-map .workbench-node rect { fill: var(--table-row-bg); stroke: var(--border); }
+    .relationship-workbench-map .workbench-node.dataset rect { fill: var(--details-panel-bg); stroke: var(--success); }
+    .relationship-workbench-map .workbench-node.dataset_column rect { fill: var(--details-panel-bg); }
+    .relationship-workbench-map .workbench-node.terminal rect { stroke: var(--warn); stroke-dasharray: 5 3; }
+    .relationship-workbench-map .workbench-node.external rect { fill: var(--details-panel-bg); stroke: var(--warn); }
+    .relationship-workbench-map text { fill: var(--text); font-family: var(--font-sans); font-size: 11px; pointer-events: none; }
+    .relationship-workbench-map .workbench-subtext { fill: var(--muted); font-size: 9px; }
+    .relationship-workbench-map .workbench-lane { fill: var(--muted); font-weight: 700; font-size: 12px; }
     .flow-workspace {
       display: grid;
       grid-template-columns: minmax(0, 1fr) minmax(250px, 320px);
@@ -600,7 +616,7 @@
       <div class="title">Flow</div>
       <div class="top-controls">
         <button class="secondary" id="refreshFlowBtn" type="button" title="Refresh the selected checklist flow">Refresh</button>
-        <button id="exportFlowBtn" type="button" title="Export graph JSON, GraphViz DOT, Mermaid, and DBML to the checklist asset pack">Export</button>
+        <button id="exportFlowBtn" type="button" title="Export flow graph, DBML, and relationship-workbench files to the checklist asset pack">Export</button>
       </div>
     </div>
     <div class="bar flow-toolbar">
@@ -612,6 +628,7 @@
         <option value="sections">Section overview</option>
         <option value="predicates">Predicate overview</option>
         <option value="external">External targets</option>
+        <option value="workbench">Relationship Workbench</option>
         <option value="lint">Relationship lint</option>
       </select>
       <label for="flowFilterInput">Trace</label>

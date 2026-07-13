@@ -3511,6 +3511,101 @@
       flowEdges.innerHTML = "";
     }
 
+    function renderRelationshipWorkbench(workbench) {
+      if (!flowSummary || !flowCanvas || !flowEdges) return;
+      const nodes = Array.isArray(workbench?.nodes) ? workbench.nodes : [];
+      const edges = Array.isArray(workbench?.edges) ? workbench.edges : [];
+      const findings = Array.isArray(workbench?.findings) ? workbench.findings : [];
+      const summary = workbench?.summary || {};
+      const kinds = ["checklist_row", "dataset", "dataset_column", "mutation_source", "terminal", "external"];
+      const labels = {
+        checklist_row: "Checklist rows",
+        dataset: "Datasets",
+        dataset_column: "Dataset columns",
+        mutation_source: "Mutation sources",
+        terminal: "Declared outcomes",
+        external: "External / unresolved",
+      };
+      const maxPerKind = 60;
+      const grouped = new Map(kinds.map((kind) => [kind, []]));
+      nodes.forEach((node) => {
+        const kind = grouped.has(node.kind) ? node.kind : "external";
+        grouped.get(kind).push(node);
+      });
+      grouped.forEach((items) => items.sort((left, right) =>
+        String(left.title || left.id || "").localeCompare(String(right.title || right.id || ""))));
+
+      const visible = new Map();
+      const omitted = [];
+      kinds.forEach((kind) => {
+        const items = grouped.get(kind) || [];
+        items.slice(0, maxPerKind).forEach((node) => visible.set(node.id, node));
+        if (items.length > maxPerKind) omitted.push(`${items.length - maxPerKind} ${labels[kind].toLowerCase()}`);
+      });
+      const positions = new Map();
+      const laneWidth = 176;
+      const nodeWidth = 160;
+      const nodeHeight = 46;
+      const rowGap = 64;
+      let tallest = 0;
+      kinds.forEach((kind, laneIndex) => {
+        const items = (grouped.get(kind) || []).slice(0, maxPerKind);
+        tallest = Math.max(tallest, items.length);
+        items.forEach((node, rowIndex) => {
+          positions.set(node.id, { x: 18 + laneIndex * laneWidth, y: 48 + rowIndex * rowGap });
+        });
+      });
+      const width = 18 + kinds.length * laneWidth;
+      const height = Math.max(170, 62 + tallest * rowGap);
+      const visibleEdges = edges.filter((edge) => visible.has(edge.source_id) && visible.has(edge.target_id));
+      const label = (value, limit) => {
+        const text = String(value || "");
+        return text.length > limit ? `${text.slice(0, Math.max(1, limit - 3))}...` : text;
+      };
+      const svgEdges = visibleEdges.map((edge) => {
+        const source = positions.get(edge.source_id);
+        const target = positions.get(edge.target_id);
+        if (!source || !target) return "";
+        const startX = source.x + nodeWidth;
+        const startY = source.y + nodeHeight / 2;
+        const endX = target.x;
+        const endY = target.y + nodeHeight / 2;
+        const midpoint = (startX + endX) / 2;
+        return `<path class="workbench-edge ${escapeHtmlAttr(String(edge.class || "relationship"))}" d="M ${startX} ${startY} C ${midpoint} ${startY}, ${midpoint} ${endY}, ${endX} ${endY}" marker-end="url(#workbenchArrow)"><title>${escapeHtml(edge.class || "relationship")}: ${escapeHtml(edge.label || "")}</title></path>`;
+      }).join("");
+      const svgLanes = kinds.map((kind, laneIndex) =>
+        `<text class="workbench-lane" x="${18 + laneIndex * laneWidth}" y="22">${escapeHtml(labels[kind])}</text>`).join("");
+      const svgNodes = Array.from(visible.values()).map((node) => {
+        const position = positions.get(node.id);
+        if (!position) return "";
+        return `<g class="workbench-node ${escapeHtmlAttr(String(node.kind || "external"))}">
+          <rect x="${position.x}" y="${position.y}" width="${nodeWidth}" height="${nodeHeight}" rx="7"></rect>
+          <text x="${position.x + 8}" y="${position.y + 18}">${escapeHtml(label(node.title || node.id, 25))}</text>
+          <text class="workbench-subtext" x="${position.x + 8}" y="${position.y + 34}">${escapeHtml(label(node.subtitle || node.kind || "", 31))}</text>
+          <title>${escapeHtml(node.title || node.id)}${node.subtitle ? ` — ${escapeHtml(node.subtitle)}` : ""}</title>
+        </g>`;
+      }).join("");
+      const truncation = omitted.length
+        ? `<div class="note">Overview shows the first ${maxPerKind} nodes in each lane; ${escapeHtml(omitted.join(", "))} are represented in the exported JSON/DOT but omitted here for legibility.</div>`
+        : "";
+      flowSummary.innerHTML = [
+        `<span class="chip">${escapeHtml(String(summary.rows ?? 0))} rows</span>`,
+        `<span class="chip">${escapeHtml(String(summary.predicate_edges ?? 0))} predicate edges</span>`,
+        `<span class="chip">${escapeHtml(String(summary.binding_edges ?? 0))} binding edges</span>`,
+        `<span class="chip">${escapeHtml(String(summary.datasets ?? 0))} datasets</span>`,
+        `<span class="chip">${escapeHtml(String(summary.orphan_rows ?? 0))} orphan rows</span>`,
+      ].join("");
+      flowCanvas.innerHTML = `${truncation}<div class="relationship-workbench-map"><svg viewBox="0 0 ${width} ${height}" role="img" aria-label="Relationship Workbench graph"><defs><marker id="workbenchArrow" markerWidth="8" markerHeight="8" refX="7" refY="3" orient="auto"><path d="M0,0 L0,6 L7,3 z"></path></marker></defs>${svgLanes}${svgEdges}${svgNodes}</svg></div>`;
+      const visibleFindings = findings.slice(0, 120);
+      flowEdges.innerHTML = visibleFindings.length
+        ? visibleFindings.map((finding) => `<li><strong>${escapeHtml(finding.code || "FINDING")}</strong> — ${escapeHtml(finding.message || "")}</li>`).join("")
+        : "<li>No relationship findings.</li>";
+      if (findings.length > visibleFindings.length) {
+        flowEdges.insertAdjacentHTML("beforeend", `<li class="note">${escapeHtml(String(findings.length - visibleFindings.length))} additional findings are available in the exported relationship-workbench.json.</li>`);
+      }
+      flowRenderedProjection = null;
+    }
+
     function flowNodeMeta(addressId) {
       const node = (flowGraph?.nodes || []).find((item) => item.address_id === addressId);
       return node ? { type: "node", key: addressId, raw: node } : null;
@@ -3792,6 +3887,10 @@
 
     function renderFlowGraph(graph) {
       if (!flowSummary || !flowCanvas || !flowEdges) return;
+      if (graph?.schema === "chax-relationship-workbench-v1") {
+        renderRelationshipWorkbench(graph);
+        return;
+      }
       const allNodes = Array.isArray(graph?.nodes) ? graph.nodes : [];
       const allEdges = flowRelationshipEdges(graph);
       const summary = graph?.summary || {};
@@ -3906,7 +4005,8 @@
       try {
         const params = new URLSearchParams({ checklist, instance_id: instanceId });
         addWorkspaceQueryContext(params, checklist);
-        const graph = await fetchJson(`/api/v1/visualizations/graph?${params.toString()}`);
+        const endpoint = flowMode === "workbench" ? "workbench" : "graph";
+        const graph = await fetchJson(`/api/v1/visualizations/${endpoint}?${params.toString()}`);
         flowGraph = graph;
         renderFlowGraph(graph);
       } catch (err) {
@@ -3938,7 +4038,7 @@
           body: JSON.stringify(payload),
         });
         await loadFlowGraph();
-        alert(`Flow exports (JSON, DOT, Mermaid, and DBML) updated in ${result.directory || "the checklist visualizations folder"}.`);
+        alert(`Flow exports (JSON, DOT, Mermaid, DBML, and Relationship Workbench) updated in ${result.directory || "the checklist visualizations folder"}.`);
       } catch (err) {
         alert(`Flow export failed: ${err.message || err}`);
       }
@@ -4644,7 +4744,7 @@
       flowMode = flowModeSelect.value || "swimlanes";
       flowDrilldown = null;
       flowPreviousMode = null;
-      if (flowGraph) renderFlowGraph(flowGraph);
+      if (activeView === "flow") loadFlowGraph();
     });
     flowFilterInput?.addEventListener("input", () => {
       flowFocus = null;

@@ -289,6 +289,7 @@ set_tests_properties(integration-schema PROPERTIES LABELS "smoke")
 add_executable(graph-projection-test
   tests/graph_projection_test.cpp
   src/core/asset_pack.cpp
+  src/core/checklist_markdown.cpp
   src/core/checklist_store.cpp
   src/core/graph_projection.cpp
   src/core/logging.cpp

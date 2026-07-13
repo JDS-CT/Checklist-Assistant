@@ -70,6 +70,8 @@ const std::vector<DemoCommand> kCommandCatalog = {
     {"GET", "/api/v1/export/jsonl", "Export all slugs as JSON Lines."},
     {"GET", "/api/v1/visualizations/graph",
      "Return a read-only graph projection for one checklist instance."},
+    {"GET", "/api/v1/visualizations/workbench",
+     "Return the relationship workbench projection for one checklist instance and asset package."},
     {"POST", "/api/v1/import/jsonl",
      "Import JSON Lines into a checklist instance (update existing rows, optionally add missing)."},
     {"GET", "/api/v1/export/markdown/<checklist>", "Export a checklist as canonical Markdown for authors."},
@@ -84,7 +86,7 @@ const std::vector<DemoCommand> kCommandCatalog = {
     {"POST", "/api/v1/workspace/markdown/export",
      "Export a checklist (template or instance data) into checklists/<pack>/<checklist>/checklist.md."},
     {"POST", "/api/v1/workspace/visualizations/export",
-     "Export deterministic graph views under a checklist asset pack's visualizations folder."},
+     "Export deterministic graph and relationship-workbench views under a checklist asset pack's visualizations folder."},
     {"POST", "/api/v1/workspace/asset-pack/export",
      "Archive checklists/<pack>/<checklist>/ as a transportable .chk/.7z/.zip asset pack."},
     {"POST", "/api/v1/workspace/asset-pack/import",
@@ -4067,6 +4069,80 @@ void ConfigureServer(platform::HttpServer& server, ChecklistStore& store, OAuthS
     return OkResponse(ChecklistGraphToJson(graph));
   };
 
+  auto handle_visualization_workbench = [&store](const platform::HttpRequest& request) {
+    const std::string checklist = GetQueryParam(request, "checklist", "");
+    const std::string instance_id = GetQueryParam(request, "instance_id", "");
+    if (checklist.empty() || instance_id.empty()) {
+      return ErrorResponse("INVALID_FIELD", "checklist and instance_id are required.", {}, 400);
+    }
+    if (!core::IsValidBase32Id(instance_id, 16)) {
+      return ErrorResponse("INVALID_FIELD", "instance_id must be a 16-char Base32 token.",
+                           json{{"instance_id", instance_id}}, 400);
+    }
+
+    std::string source_name = GetQueryParam(request, "source_name", "");
+    std::string pack = GetQueryParam(request, "pack", "");
+    std::string checklist_dir = GetQueryParam(request, "checklist_dir", "");
+    if (source_name.empty() && pack.empty() && checklist_dir.empty()) {
+      const auto ownerships = store.ListOwnershipsForInstance(checklist, instance_id);
+      if (ownerships.size() == 1) {
+        source_name = ownerships.front().source_name;
+        pack = ownerships.front().pack;
+        checklist_dir = ownerships.front().checklist_dir;
+      } else if (ownerships.size() > 1) {
+        return ErrorResponse("AMBIGUOUS_CHECKLIST_OWNERSHIP",
+                             "Checklist instance has multiple source/pack owners; specify source_name and pack.",
+                             json{{"checklist", checklist},
+                                  {"instance_id", instance_id},
+                                  {"matches", OwnershipsToJson(ownerships)}},
+                             400);
+      }
+    }
+    if (checklist_dir.empty()) {
+      checklist_dir = checklist;
+    }
+
+    const auto workspace_roots = LoadChecklistWorkspaceRoots();
+    std::string resolve_error;
+    json resolve_details = json::object();
+    const auto resolved_root = ResolveChecklistRoot(workspace_roots, checklist_dir, pack, source_name,
+                                                     false, &resolve_error, &resolve_details);
+    if (!resolved_root) {
+      return ErrorResponse("INVALID_FIELD",
+                           resolve_error.empty() ? "Invalid pack or checklist." : resolve_error,
+                           resolve_details, 400);
+    }
+
+    json warnings = json::array();
+    const auto ownership = OwnershipFromResolution(*resolved_root, checklist);
+    auto slugs = store.QuerySlugs(checklist, instance_id, std::nullopt, std::nullopt,
+                                  std::nullopt, std::nullopt, ownership);
+    if (slugs.empty()) {
+      slugs = store.QuerySlugs(checklist, instance_id, std::nullopt, std::nullopt,
+                               std::nullopt, std::nullopt);
+      if (!slugs.empty()) {
+        warnings.push_back(
+            {{"code", "OWNERSHIP_FILTER_EMPTY"},
+             {"message",
+              "No rows had persisted ownership for the requested source/pack; analyzed legacy unowned rows."},
+             {"details",
+              {{"source_name", resolved_root->source_name},
+               {"pack", resolved_root->pack},
+               {"checklist_dir", resolved_root->checklist_dir}}}});
+      }
+    }
+    if (slugs.empty()) {
+      return ErrorResponse("NOT_FOUND", "No slugs found for checklist/instance.",
+                           json{{"checklist", checklist}, {"instance_id", instance_id}}, 404);
+    }
+    const auto graph = BuildChecklistGraph(slugs);
+    const auto workbench = BuildRelationshipWorkbench(graph, resolved_root->root);
+    LogInfo("GET /api/v1/visualizations/workbench source=" + resolved_root->source_name +
+            " pack=" + resolved_root->pack + " checklist=" + checklist +
+            " instance=" + instance_id);
+    return OkResponse(workbench, 200, warnings);
+  };
+
   auto handle_history = [&store](const platform::HttpRequest& request) {
     if (request.path_params.empty()) {
       return ErrorResponse("INVALID_FIELD", "Missing address_id path parameter.", {}, 400);
@@ -5996,16 +6072,22 @@ void ConfigureServer(platform::HttpServer& server, ChecklistStore& store, OAuthS
 
       const auto graph = BuildChecklistGraph(slugs);
       const json graph_json = ChecklistGraphToJson(graph);
+      const json workbench_json = BuildRelationshipWorkbench(graph, resolved_root->root);
       const auto output_root = resolved_root->root / "visualizations" / instance_id;
       const auto json_path = output_root / "graph.json";
       const auto dot_path = output_root / "section-flow.dot";
       const auto mermaid_path = output_root / "section-flow.mmd";
       const auto dbml_path = output_root / "runtime-schema.dbml";
+      const auto workbench_json_path = output_root / "relationship-workbench.json";
+      const auto workbench_dot_path = output_root / "relationship-workbench.dot";
       std::string write_error;
       if (!WriteUtf8File(json_path, graph_json.dump(2) + "\n", &write_error) ||
           !WriteUtf8File(dot_path, RenderChecklistGraphDot(graph), &write_error) ||
           !WriteUtf8File(mermaid_path, RenderChecklistGraphMermaid(graph), &write_error) ||
-          !WriteUtf8File(dbml_path, RenderChecklistRuntimeSchemaDbml(), &write_error)) {
+          !WriteUtf8File(dbml_path, RenderChecklistRuntimeSchemaDbml(), &write_error) ||
+          !WriteUtf8File(workbench_json_path, workbench_json.dump(2) + "\n", &write_error) ||
+          !WriteUtf8File(workbench_dot_path, RenderRelationshipWorkbenchDot(workbench_json),
+                         &write_error)) {
         return ErrorResponse("INTERNAL_ERROR", write_error, {}, 500);
       }
 
@@ -6013,8 +6095,9 @@ void ConfigureServer(platform::HttpServer& server, ChecklistStore& store, OAuthS
               resolved_root->source_name + " pack=" + resolved_root->pack +
               " checklist=" + checklist + " instance=" + instance_id +
               " -> " + output_root.string());
-      json files =
-          json::array({json_path.string(), dot_path.string(), mermaid_path.string(), dbml_path.string()});
+      json files = json::array({json_path.string(), dot_path.string(), mermaid_path.string(),
+                                dbml_path.string(), workbench_json_path.string(),
+                                workbench_dot_path.string()});
       return OkResponse(
           json{{"source_name", resolved_root->source_name},
                {"source_path", resolved_root->library_root.string()},
@@ -6278,6 +6361,8 @@ void ConfigureServer(platform::HttpServer& server, ChecklistStore& store, OAuthS
   add_authed(platform::HttpMethod::kGet, R"(/api/v1/slugs/(.+))", handle_slug);
   add_authed(platform::HttpMethod::kGet, "/api/v1/visualizations/graph",
              handle_visualization_graph);
+  add_authed(platform::HttpMethod::kGet, "/api/v1/visualizations/workbench",
+             handle_visualization_workbench);
   add_authed(platform::HttpMethod::kGet, R"(/api/v1/checklists/(.+))", handle_checklist);
   add_authed(platform::HttpMethod::kGet, R"(/api/v1/relationships/address/(.+))",
              handle_relationships);
@@ -6342,6 +6427,8 @@ void ConfigureServer(platform::HttpServer& server, ChecklistStore& store, OAuthS
   server.AddHandler(platform::HttpMethod::kOptions, "/api/v1/slugs", HandleCorsPreflight);
   server.AddHandler(platform::HttpMethod::kOptions, R"(/api/v1/slugs/.*)", HandleCorsPreflight);
   server.AddHandler(platform::HttpMethod::kOptions, "/api/v1/visualizations/graph",
+                    HandleCorsPreflight);
+  server.AddHandler(platform::HttpMethod::kOptions, "/api/v1/visualizations/workbench",
                     HandleCorsPreflight);
   server.AddHandler(platform::HttpMethod::kOptions, R"(/api/v1/history/.*)", HandleCorsPreflight);
   server.AddHandler(platform::HttpMethod::kOptions, "/api/v1/slugs", HandleCorsPreflight);
