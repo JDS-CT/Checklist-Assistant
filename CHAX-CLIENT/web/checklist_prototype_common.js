@@ -3619,6 +3619,12 @@
           const coverage = Number(details.bound_row_coverage);
           const percent = Number.isFinite(coverage) ? `${Math.round(coverage * 100)}%` : "a substantial share";
           reasons.push(`${details.bound_columns ?? "?"} fields bind to ${details.bound_rows ?? "?"} of ${details.checklist_rows ?? "?"} rows (${percent}).`);
+        } else if (finding.code === "SELF_ONLY_RELATIONSHIP") {
+          const predicates = Array.isArray(details.self_predicates) ? details.self_predicates : [];
+          if (predicates.length) {
+            reasons.push(`Operational self loop${predicates.length === 1 ? "" : "s"}: ${predicates.join(", ")}.`);
+          }
+          reasons.push("No non-self predicate or declared dataset, mutation, or terminal support was found for this row.");
         }
         if (typeof details.recommendation === "string" && details.recommendation.trim()) {
           reasons.push(`Suggested next step: ${details.recommendation.trim()}`);
@@ -3646,6 +3652,7 @@
         `<span class="chip">${escapeHtml(String(summary.binding_edges ?? 0))} binding edges</span>`,
         `<span class="chip">${escapeHtml(String(summary.datasets ?? 0))} datasets</span>`,
         `<span class="chip">${escapeHtml(String(summary.orphan_rows ?? 0))} orphan rows</span>`,
+        `<span class="chip">${escapeHtml(String(summary.self_only_rows ?? 0))} self-only rows</span>`,
       ].join("");
       flowCanvas.innerHTML = `${truncation}<section class="relationship-workbench-findings"><h3>Findings</h3>${findingCards || "<div class=\"note\">No relationship findings.</div>"}</section>${moreFindings}<div class="relationship-workbench-map"><svg viewBox="0 0 ${width} ${height}" role="img" aria-label="Relationship Workbench graph"><defs><marker id="workbenchArrow" markerWidth="8" markerHeight="8" refX="7" refY="3" orient="auto"><path d="M0,0 L0,6 L7,3 z"></path></marker></defs>${svgLanes}${svgEdges}${svgNodes}</svg></div>`;
       const visibleFindings = orderedFindings.slice(0, 120);

@@ -688,7 +688,9 @@ int main() {
                  {"target_count", static_cast<int>(fan_targets.size())}});
     RecordStep(current_step, true, "fanout ok");
 
-    // Cycle safety: the initiating row must not be overwritten and no fixpoint inference is performed.
+    // Cycle safety: the configured depth may traverse A -> B -> C, but must
+    // not re-enter and overwrite the initiating row as though it were a
+    // fixpoint calculation.
     current_step = "cycle safety";
     const auto cyc_a = MakeSlug(checklist, "CycleA", instance_principal, user_principal);
     const auto cyc_b = MakeSlug(checklist, "CycleB", instance_principal, user_principal);
@@ -705,10 +707,10 @@ int main() {
     ApplyStatusUpdate(store, cyc_a.address_id, core::ChecklistStatus::kPass, "cycle-a-pass", user_principal);
     Assert(store.GetSlugOrThrow(cyc_b.address_id).status == core::ChecklistStatus::kPass,
            "Cycle: A should propagate to B");
-    Assert(store.GetSlugOrThrow(cyc_c.address_id).status == core::ChecklistStatus::kFail,
-           "Cycle: daemon must not cascade B->C in the same sweep");
+    Assert(store.GetSlugOrThrow(cyc_c.address_id).status == core::ChecklistStatus::kPass,
+           "Cycle: configured two-hop chain should cascade B->C");
     Assert(store.GetSlugOrThrow(cyc_a.address_id).comment == "cycle-a-pass",
-           "Cycle: daemon must not overwrite the initiating row");
+           "Cycle: daemon must not re-enter and overwrite the initiating row");
     AppendJsonl(predicate_summary_path,
                 {{"event", "cycle_safety"},
                  {"cycle_a", cyc_a.address_id},

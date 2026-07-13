@@ -58,7 +58,9 @@ struct ServerConfig {
   std::string shutdown_token;
   bool background_processes_enabled = true;
   std::string background_processes_root = "background_processes";
-  int predicate_chain_depth = 1;
+  // Two hops support the common composition: an upstream selector writes a
+  // target row, then that target resolves its own lookup/prefill relationship.
+  int predicate_chain_depth = 2;
 };
 
 void ConfigureServer(platform::HttpServer& server, ChecklistStore& store, OAuthStore& oauth_store,

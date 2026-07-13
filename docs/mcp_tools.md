@@ -57,6 +57,12 @@ interact with the backend using the MCP transport.
   `chax.import_markdown` with an `instance_principal` to seed instance slugs; for direct HTTP
   clients: `POST /api/v1/slugs` with `instance_principal` or import the Markdown).
 
+## Relationship authoring context
+
+Relationship triples are authored behavior, not an invitation to invent a second lookup engine. A common composition is: an upstream update writes a selector to a target row; the target row then becomes the source of a self-prefill relationship and resolves its own checklist-local CSV. The normal server default permits those two hops. Use `CHAX_PREDICATE_CHAIN_DEPTH` only for an intentionally longer finite chain.
+
+Before proposing a new runtime feature for a prefill path, inspect the active instance's rows and relationships, the checklist-local `data/` assets, and the Relationship Workbench. Prefer a small authoring change that uses the existing predicate chain when the target can own its lookup table. Test the exact input against a freshly imported, explicitly named instance; do not PATCH template rows or edit SQLite directly.
+
 ## Testing
 
 `mcp-bridge-test` (invoked via `ctest`) spins up a lightweight HTTP stub and verifies the MCP bridge

@@ -45,6 +45,7 @@ int main() {
     auto second = MakeSlug(checklist, instance_id, 2000, "Prepare", "Gate review", "Pass");
     auto third = MakeSlug(checklist, instance_id, 3000, "Finish", "Record outcome", "note");
     auto fourth = MakeSlug(checklist, instance_id, 4000, "Finish", "Unconnected review", "note");
+    auto fifth = MakeSlug(checklist, instance_id, 5000, "Finish", "Self-only calculation", "note");
 
     first.relationships = {
         {"passPropagateValidatedPass", second.address_id},
@@ -54,6 +55,7 @@ int main() {
         {"BoolVerifyValidatedStatus", third.address_id},
         {"slugPredecessor", "LEGACYSLUG000000"},
     };
+    fifth.relationships = {{"ResultSearchPrefillResult", fifth.address_id}};
 
     const auto graph = core::BuildChecklistGraph({first, second, third});
     Assert(graph.checklist == checklist, "Projection should retain checklist identity");
@@ -115,9 +117,10 @@ int main() {
     {
       std::ofstream markdown(workbench_root / "checklist.md", std::ios::binary);
       markdown << core::markdown::ExportChecklistMarkdown(
-          checklist, {first, second, third, fourth},
+          checklist, {first, second, third, fourth, fifth},
           {{first.slug_id, "slugPredecessor", legacy_serial_slug_id},
-           {fourth.slug_id, "ResultSearchPrefillResult", "0000000000000000"}},
+           {fourth.slug_id, "ResultSearchPrefillResult", "0000000000000000"},
+           {fifth.slug_id, "ResultSearchPrefillResult", fifth.slug_id}},
           core::markdown::RelationshipExportMode::kTemplate,
           core::markdown::RelationshipIdentityFormat::kId);
     }
@@ -147,7 +150,7 @@ int main() {
            << "M-001,Ready,final,\n"
            << "M-001,Ready,final,default\n";
     }
-    const auto workbench_graph = core::BuildChecklistGraph({first, second, third, fourth});
+    const auto workbench_graph = core::BuildChecklistGraph({first, second, third, fourth, fifth});
     const auto workbench = core::BuildRelationshipWorkbench(workbench_graph, workbench_root);
     Assert(workbench.value("schema", "") == "chax-relationship-workbench-v1",
            "Workbench should identify its portable analysis schema");
@@ -155,6 +158,8 @@ int main() {
            "Workbench should analyze the declared CSV dataset");
     Assert(workbench["summary"].value("orphan_rows", 99) == 1,
            "Rows with no declared connection should remain visible as orphan findings");
+    Assert(workbench["summary"].value("self_only_rows", 99) == 1,
+           "Rows with operational self loops only should remain visible as relationship-sufficiency findings");
     bool found_lookup = false;
     bool found_column_binding = false;
     bool found_terminal = false;
@@ -164,6 +169,7 @@ int main() {
     bool found_high_fan_out = false;
     bool found_mutation_target_missing = false;
     bool found_orphan = false;
+    bool found_self_only = false;
     bool found_constant_recommendation = false;
     for (const auto& edge : workbench["edges"]) {
       found_lookup = found_lookup || edge.value("class", "") == "lookup_key";
@@ -190,6 +196,12 @@ int main() {
             finding["details"]["unresolved_markdown_relationships"].is_array() &&
             finding["details"]["unresolved_markdown_relationships"].size() == 1;
       }
+      if (finding.value("code", "") == "SELF_ONLY_RELATIONSHIP" &&
+          finding.value("node_id", "") == "row:" + fifth.address_id) {
+        found_self_only = finding.value("severity", "") == "warning" &&
+            finding["details"].value("self_predicates", nlohmann::json::array()).is_array() &&
+            finding["details"]["self_predicates"].size() == 1;
+      }
     }
     Assert(found_lookup, "Workbench should expose a lookup-key edge");
     Assert(found_column_binding, "Workbench should expose header-derived bindings");
@@ -206,6 +218,8 @@ int main() {
            "Workbench should name an invalid declared mutation target precisely");
     Assert(found_orphan,
            "Orphan findings should explain that derived checklist order was excluded");
+    Assert(found_self_only,
+           "Self-only relationship findings should preserve the operational predicates that triggered the advisory");
     const auto workbench_dot = core::RenderRelationshipWorkbenchDot(workbench);
     Assert(workbench_dot.find("digraph relationship_workbench") != std::string::npos,
            "Workbench should export a DOT graph");

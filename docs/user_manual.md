@@ -115,6 +115,12 @@ Core authoring rules:
 
 Start new checklists with a metadata row in section `_meta`, procedure `Checklist metadata`, and instructions that explain scope, intended operator, required assets, and known limits.
 
+### Composed Prefill
+
+Use existing predicates to keep lookup data with the row that owns it. For example, an upstream row can write a compact selector into a target row; the target row can then use a self-prefill relationship and its own CSV to derive its `result`, `status`, or `comment`. This is a normal predicate chain, not a separate target-traversal feature.
+
+The normal server default permits two predicate hops, which is enough for that source-to-target-to-target-self composition. Set `CHAX_PREDICATE_CHAIN_DEPTH` only when a deliberately longer chain is required. Keep the limit finite and use the Relationship Workbench to inspect loops and dependency scope before raising it.
+
 ## 5. Minimal Markdown Skeleton
 
 ```markdown

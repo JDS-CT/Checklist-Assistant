@@ -224,6 +224,7 @@ int main() {
     const std::string checklist = "predicate-daemon-exhaustive-csv";
     const std::string legacy_checklist = checklist + "-legacy";
     const std::string self_checklist = "predicate-daemon-self-prefill";
+    const std::string composed_checklist = "predicate-daemon-composed-prefill";
     const std::string instance_principal = "instance||predicate-daemon-exhaustive-csv";
     const std::string user_principal = "user||provider=test||username=prefill-csv";
     constexpr bool kUseLineageHeaders = true;
@@ -233,6 +234,8 @@ int main() {
     const auto dataset_path = dataset_dir / (checklist + ".csv");
     const auto self_dataset_dir = library_root / pack / self_checklist / "data";
     const auto self_dataset_path = self_dataset_dir / (self_checklist + ".csv");
+    const auto composed_dataset_dir = library_root / pack / composed_checklist / "data";
+    const auto composed_dataset_path = composed_dataset_dir / (composed_checklist + ".csv");
     {
       std::error_code ec;
       std::filesystem::create_directories(dataset_dir, ec);
@@ -455,11 +458,50 @@ int main() {
            "Self prefill should update result on Pass");
     RecordStep(current_step, true, "csv prefill self pass ok");
 
+    current_step = "csv composed prefill chain";
+    {
+      std::error_code ec;
+      std::filesystem::create_directories(composed_dataset_dir, ec);
+    }
+    const auto composed_source =
+        MakeSlug(checklist, "ComposedPrefillSource", instance_principal, user_principal);
+    const auto composed_target =
+        MakeSlug(composed_checklist, "ComposedPrefillTarget", instance_principal, user_principal);
+    store.UpsertSlug(composed_source);
+    store.UpsertSlug(composed_target);
+    store.InsertAddressRelationship(
+        composed_source.address_id,
+        core::RelationshipEdge{"ResultPropagateValidatedResult", composed_target.address_id});
+    store.InsertAddressRelationship(
+        composed_target.address_id,
+        core::RelationshipEdge{"ResultSearchPrefillComment", composed_target.address_id});
+    {
+      std::ofstream out(composed_dataset_path);
+      Assert(out.is_open(),
+             "Failed to write composed prefill dataset to " + composed_dataset_path.string());
+      out << composed_target.slug_id << "-result," << composed_target.slug_id << "-comment\n";
+      out << "selector,target-owned-comment\n";
+    }
+
+    core::SlugUpdate composed_update;
+    composed_update.address_id = composed_source.address_id;
+    composed_update.result = "selector";
+    store.ApplyUpdate(composed_update);
+
+    const auto composed_after = store.GetSlugOrThrow(composed_target.address_id);
+    Assert(composed_after.result == "selector",
+           "Composed prefill should propagate the upstream selector to the target");
+    Assert(composed_after.comment == "target-owned-comment",
+           "Composed prefill should use the target-owned CSV on the second hop");
+    RecordStep(current_step, true, "csv composed prefill chain ok");
+
     RemoveIfExists(dataset_path);
     RemoveIfExists(self_dataset_path);
+    RemoveIfExists(composed_dataset_path);
     std::error_code ec;
     std::filesystem::remove(dataset_dir, ec);
     std::filesystem::remove(self_dataset_dir, ec);
+    std::filesystem::remove(composed_dataset_dir, ec);
     RemoveIfExists(db_path);
     return 0;
   } catch (const std::exception& ex) {

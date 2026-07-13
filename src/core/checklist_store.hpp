@@ -219,7 +219,7 @@ private:
   sqlite3* db_ = nullptr;
   std::string db_path_;
   mutable std::mutex mutex_;
-  int predicate_chain_depth_ = 1;
+  int predicate_chain_depth_ = 2;
 };
 
 ChecklistStatus ParseStatus(const std::string& value);

@@ -124,7 +124,7 @@ future completion-triggered report/email flow should use an explicit script or
 action contract with its own confirmation, authorization, and audit record;
 it must not be inferred from terminal metadata.
 
-## Relationship Completeness
+## Relationship Completeness and Sufficiency
 
 In v1, every checklist row should have at least one emitted relationship: a
 CHAX predicate, lookup/binding, declared mutation source, or declared terminal
@@ -139,6 +139,21 @@ explicit declared terminal and an orphan are therefore mutually exclusive for
 completeness purposes: a terminal row names its external outcome; an orphan
 names nothing. `ORPHAN_ROW` is a warning, never a runtime block, so compact or
 prototype checklists remain usable while the gap is visible.
+
+`ORPHAN_ROW` is deliberately narrow. It answers whether a row has **any**
+recognized connection. A row with only operational predicate edges to itself
+is therefore not an orphan, but it may still be isolated from the wider
+procedure. `SELF_ONLY_RELATIONSHIP` is a separate warning for that case when
+the row has no non-self predicate edge and no declared dataset binding,
+mutation source, or terminal purpose. It asks the author to connect the row to
+a downstream consumer, stakeholder, or external automation source—or make
+that purpose explicit. It does not claim that a local calculation is invalid.
+
+Declared terminals, mutation sources, lookup/binding edges, and non-self
+predicate edges suppress this advisory because they supply the missing visible
+context. The Workbench summary exposes both `orphan_rows` and
+`self_only_rows` so authors can track exact absence of connections separately
+from potentially insufficient relationship scope.
 
 This is a Relationship Workbench policy and compatibility migration path, not
 an immediate change to the core Markdown parser. The workbench therefore
@@ -161,13 +176,14 @@ checklist use.
 
 | Code | Severity | Exact trigger | Recommended conclusion |
 | --- | --- | --- | --- |
-| `CONSTANT_COLUMN` | info | Every dataset record has the same non-empty value in this column. | The finding carries a non-mutating normalization recommendation: consider a named reference record/dictionary, retain the column through a reviewed migration, then bind consumers explicitly. Keep the CSV unchanged until that migration is chosen. |
+| `CONSTANT_COLUMN` | info | Every dataset record has the same non-empty value in this column. | Inspect value ownership in the authored checklist. When the literal belongs to a target row, move it through an existing predicate chain and verify the re-imported instance before removing the duplicated source column. |
 | `REPEATED_LITERAL` | info | A non-empty literal repeats in every populated cell, but some records leave the column blank. | A default-with-override or dictionary candidate exists; blanks may carry meaning and must be reviewed. |
 | `HIGH_FAN_OUT_LOOKUP_KEY` | info | One declared lookup provides at least three bound fields and reaches at least one quarter of the current checklist rows. | The lookup is a major operational dependency worth documenting, testing, and considering for a future normalized profile. This measures lookup bindings only, never arbitrary predicate density. |
 | `RELATIONSHIP_PACKAGE_MISSING` | warning | `relationships/bindings.json` is absent. | The legacy checklist still loads, but its binding/completeness model has not been declared. |
 | `COLUMN_BINDING_TARGET_MISSING` | warning | A header-derived CSV field has no current row or explicit legacy alias. | Add or repair the relevant row/lineage mapping, or remove the obsolete field after reviewing consumers. |
 | `MUTATION_SOURCE_TARGET_MISSING` | warning | A declared mutation source does not identify an imported current row. | Repair the declaration; this is not evidence of an undeclared runtime write. |
 | `ORPHAN_ROW` | warning | A row has no emitted predicate, lookup/binding, declared mutation source, or declared terminal edge. | Connect it, retire it, or add a justified terminal declaration. Derived display order alone does not resolve this warning. |
+| `SELF_ONLY_RELATIONSHIP` | warning | A row has one or more non-lineage predicate edges only to itself, with no non-self predicate or declared dataset, mutation, or terminal support. | Inspect whether it has an external automation source, downstream consumer, stakeholder/terminal purpose, or a missing procedure connection. Keep a valid local calculation, but make its wider purpose visible. |
 
 Input-format findings such as `RELATIONSHIP_DECLARATIONS_INVALID`,
 `DATASET_PATH_INVALID`, `DATASET_MISSING`, `LOOKUP_KEY_INVALID`, and

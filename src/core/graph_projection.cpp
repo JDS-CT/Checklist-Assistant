@@ -658,6 +658,9 @@ json BuildRelationshipWorkbench(const ChecklistGraph& graph,
   json findings = json::array();
   std::unordered_set<std::string> node_ids;
   std::unordered_set<std::string> connected_addresses;
+  std::unordered_map<std::string, std::vector<std::string>> self_predicates_by_address;
+  std::unordered_set<std::string> non_self_predicate_addresses;
+  std::unordered_set<std::string> declared_support_addresses;
   std::unordered_map<std::string, std::vector<std::string>> addresses_by_slug;
   std::unordered_set<std::string> local_addresses;
   std::size_t predicate_count = 0;
@@ -715,8 +718,10 @@ json BuildRelationshipWorkbench(const ChecklistGraph& graph,
       continue;
     }
     const std::string source_id = "row:" + edge.source_address_id;
+    const bool target_is_local =
+        local_addresses.find(edge.target_address_id) != local_addresses.end();
     std::string target_id;
-    if (local_addresses.find(edge.target_address_id) != local_addresses.end()) {
+    if (target_is_local) {
       target_id = "row:" + edge.target_address_id;
       connected_addresses.insert(edge.target_address_id);
     } else {
@@ -727,6 +732,15 @@ json BuildRelationshipWorkbench(const ChecklistGraph& graph,
     add_edge(source_id, target_id, "predicate", edge.predicate,
              {{"is_lineage", edge.is_lineage}, {"is_external", edge.is_external}});
     connected_addresses.insert(edge.source_address_id);
+    if (!edge.is_lineage && target_is_local &&
+        edge.source_address_id == edge.target_address_id) {
+      self_predicates_by_address[edge.source_address_id].push_back(edge.predicate);
+    } else if (!edge.is_lineage) {
+      non_self_predicate_addresses.insert(edge.source_address_id);
+      if (target_is_local) {
+        non_self_predicate_addresses.insert(edge.target_address_id);
+      }
+    }
     ++predicate_count;
   }
 
@@ -872,6 +886,7 @@ json BuildRelationshipWorkbench(const ChecklistGraph& graph,
           add_edge("row:" + address_id, terminal_id, "declared_terminal", "terminal outcome",
                    {{"stakeholder", stakeholder}, {"reason", reason}});
           connected_addresses.insert(address_id);
+          declared_support_addresses.insert(address_id);
         }
       }
     }
@@ -902,6 +917,7 @@ json BuildRelationshipWorkbench(const ChecklistGraph& graph,
         for (const auto& address_id : matching) {
           add_edge(source_id, "row:" + address_id, "direct_write", source.value("field", "write"), source);
           connected_addresses.insert(address_id);
+          declared_support_addresses.insert(address_id);
         }
       }
     }
@@ -971,6 +987,7 @@ json BuildRelationshipWorkbench(const ChecklistGraph& graph,
                        {{"field", lookup_field}, {"column", lookup_column},
                         {"legacy_slug_id", legacy_alias}});
               connected_addresses.insert(address_id);
+              declared_support_addresses.insert(address_id);
               ++binding_count;
             }
           }
@@ -1053,6 +1070,7 @@ json BuildRelationshipWorkbench(const ChecklistGraph& graph,
                      {{"slug_id", parsed_binding->first}, {"field", parsed_binding->second},
                       {"legacy_slug_id", legacy_alias}});
             connected_addresses.insert(address_id);
+            declared_support_addresses.insert(address_id);
             ++binding_count;
           }
         }
@@ -1109,6 +1127,30 @@ json BuildRelationshipWorkbench(const ChecklistGraph& graph,
                 "row:" + node.address_id, details);
   }
 
+  std::size_t self_only_count = 0;
+  for (const auto& node : graph.nodes) {
+    const auto self_predicates = self_predicates_by_address.find(node.address_id);
+    if (self_predicates == self_predicates_by_address.end() ||
+        non_self_predicate_addresses.find(node.address_id) != non_self_predicate_addresses.end() ||
+        declared_support_addresses.find(node.address_id) != declared_support_addresses.end()) {
+      continue;
+    }
+    ++self_only_count;
+    add_finding(
+        "SELF_ONLY_RELATIONSHIP", "warning",
+        "This row has operational predicate edges only to itself. It may be a valid local calculation, "
+        "but declare an external automation source, downstream consumer, stakeholder/terminal purpose, "
+        "or connect it to the wider procedure.",
+        "row:" + node.address_id,
+        {{"address_id", node.address_id},
+         {"slug_id", node.slug_id},
+         {"section", node.section},
+         {"procedure", node.procedure},
+         {"action", node.action},
+         {"self_predicates", self_predicates->second},
+         {"suppressed_by", "non_self_predicate_or_declared_support"}});
+  }
+
   return {{"schema", "chax-relationship-workbench-v1"},
           {"checklist", graph.checklist},
           {"instance_id", graph.instance_id},
@@ -1117,11 +1159,12 @@ json BuildRelationshipWorkbench(const ChecklistGraph& graph,
           {"edges", edges},
           {"findings", findings},
           {"summary",
-           {{"rows", graph.nodes.size()},
+            {{"rows", graph.nodes.size()},
             {"predicate_edges", predicate_count},
             {"binding_edges", binding_count},
             {"datasets", dataset_count},
-            {"orphan_rows", orphan_count}}}};
+            {"orphan_rows", orphan_count},
+            {"self_only_rows", self_only_count}}}};
 }
 
 std::string RenderRelationshipWorkbenchDot(const json& workbench) {
