@@ -2140,7 +2140,7 @@ std::string DefaultHtmlTemplate() {
       }
 
       .captured-image-card img {
-        max-height: 58mm;
+        max-height: 40mm;
       }
     }
   </style>
