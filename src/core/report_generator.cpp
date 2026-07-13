@@ -1404,8 +1404,8 @@ std::string BuildCapturedImagesHtml(const std::vector<CapturedReportImage>& imag
       << "<header class=\"captured-images-head\"><h2>Captured Evidence</h2>"
       << "<p>Images captured during this checklist run. Full-resolution source files are retained "
          "beside this report.</p></header>";
-  for (std::size_t page_start = 0; page_start < images.size(); page_start += 4) {
-    const std::size_t page_end = std::min(page_start + 4, images.size());
+  for (std::size_t page_start = 0; page_start < images.size(); page_start += 6) {
+    const std::size_t page_end = std::min(page_start + 6, images.size());
     out << "<div class=\"captured-image-page\">";
     for (std::size_t index = page_start; index < page_end; ++index) {
       const auto& image = images[index];
@@ -1452,7 +1452,7 @@ std::string BuildCapturedImagesLatex(const std::vector<CapturedReportImage>& ima
     const std::string preview = EvidenceOutputRelativePath(image.preview_relative);
     std::ostringstream card;
     card << "\\begin{minipage}[t]{0.48\\linewidth}\\centering\n"
-         << "\\includegraphics[width=\\linewidth,height=0.30\\textheight,keepaspectratio]"
+         << "\\includegraphics[width=\\linewidth,height=0.19\\textheight,keepaspectratio]"
          << "{\\detokenize{" << preview << "}}\\\\\n"
          << "\\footnotesize\\textbf{" << EscapeLatex(label) << "}\\\\\n";
     if (!image.captured_at.empty()) {
@@ -1469,8 +1469,8 @@ std::string BuildCapturedImagesLatex(const std::vector<CapturedReportImage>& ima
   };
 
   std::ostringstream out;
-  for (std::size_t page_start = 0; page_start < images.size(); page_start += 4) {
-    const std::size_t page_end = std::min(page_start + 4, images.size());
+  for (std::size_t page_start = 0; page_start < images.size(); page_start += 6) {
+    const std::size_t page_end = std::min(page_start + 6, images.size());
     out << "\\clearpage\n\\section*{Captured Evidence}\n\\begin{center}\n";
     for (std::size_t row_start = page_start; row_start < page_end; row_start += 2) {
       out << render_card(images[row_start]);
@@ -2140,7 +2140,7 @@ std::string DefaultHtmlTemplate() {
       }
 
       .captured-image-card img {
-        max-height: 92mm;
+        max-height: 58mm;
       }
     }
   </style>

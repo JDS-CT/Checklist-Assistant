@@ -61,7 +61,8 @@ normal.
       "bindings": "header-derived"
     }
   ],
-  "mutation_sources": []
+  "mutation_sources": [],
+  "evidence_sources": []
 }
 ```
 
@@ -94,6 +95,13 @@ lineage alias in `checklist.md`. The exported graph makes that
 `legacy_alias` bridge visible; it never substitutes a row merely because a
 human label happens to match.
 
+`evidence_sources` records non-mutating provenance that an author wants to
+inspect beside a row. A typical report-image entry names `slug_id`, `name`,
+`field`, `script`, and `manifest`; extra metadata such as capture API, preview
+format, or original artifact format remains attached to the emitted source
+node. It does not claim that an image capture wrote a row field or that the
+row passed.
+
 ## Workbench Edge Classes
 
 These are projection labels, not a replacement predicate vocabulary. A
@@ -108,6 +116,7 @@ source instead of reverse-engineering a generic graph term.
 | `lookup_key` | A mutable row field selects a record in a declared dataset. | `relationships/bindings.json` → `datasets[].lookup`. | Emitted. |
 | `column_binding` | A dataset column supplies a specific `result`, `status`, or `comment` field. | `relationships/bindings.json` plus a `header-derived` CSV header. | Emitted. |
 | `direct_write` | A declared human, API, script, agent, or daemon source writes a mutable field. | `relationships/bindings.json` → `mutation_sources`. | Emitted only for an explicit declaration. |
+| `evidence_capture` | A declared source retains non-mutating evidence for a row, such as a report image, trace, or instrument artifact. | `relationships/bindings.json` → `evidence_sources`. | Emitted only for an explicit declaration. |
 | `declared_terminal` | An author declares a final stakeholder, handoff, or retained outcome for a row. | `relationships/bindings.json` → `completeness.terminal_rows`. | Emitted. |
 | `legacy_alias` | A historical slug ID is explicitly mapped through `slugPredecessor`/`slugSuccessor` lineage to a current row. | Markdown `Relationships`. | Emitted. |
 | `contains_column` | Structural display edge from a dataset to one of its columns; it does not imply a field write. | The declared CSV header. | Emitted. |
@@ -149,7 +158,7 @@ mutation source, or terminal purpose. It asks the author to connect the row to
 a downstream consumer, stakeholder, or external automation source—or make
 that purpose explicit. It does not claim that a local calculation is invalid.
 
-Declared terminals, mutation sources, lookup/binding edges, and non-self
+Declared terminals, mutation sources, evidence sources, lookup/binding edges, and non-self
 predicate edges suppress this advisory because they supply the missing visible
 context. The Workbench summary exposes both `orphan_rows` and
 `self_only_rows` so authors can track exact absence of connections separately

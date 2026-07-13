@@ -139,7 +139,9 @@ int main() {
                << "\", \"field\": \"result\"},\n"
                << "    \"bindings\": \"header-derived\"\n"
                << "  }],\n"
-               << "  \"mutation_sources\": [{\"slug_id\": \"0000000000000000\", \"name\": \"stale test source\"}]\n"
+               << "  \"mutation_sources\": [{\"slug_id\": \"0000000000000000\", \"name\": \"stale test source\"}],\n"
+               << "  \"evidence_sources\": [{\"slug_id\": \"" << second.slug_id
+               << "\", \"name\": \"image capture\", \"field\": \"report image evidence\", \"script\": \"scripts/capture.ps1\", \"manifest\": \"reports/<instance_id>/images/manifest.json\"}]\n"
                << "}\n";
     }
     {
@@ -156,6 +158,8 @@ int main() {
            "Workbench should identify its portable analysis schema");
     Assert(workbench["summary"].value("datasets", 0) == 1,
            "Workbench should analyze the declared CSV dataset");
+    Assert(workbench["summary"].value("evidence_sources", 0) == 1,
+           "Workbench should count declared evidence sources");
     Assert(workbench["summary"].value("orphan_rows", 99) == 1,
            "Rows with no declared connection should remain visible as orphan findings");
     Assert(workbench["summary"].value("self_only_rows", 99) == 1,
@@ -163,6 +167,7 @@ int main() {
     bool found_lookup = false;
     bool found_column_binding = false;
     bool found_terminal = false;
+    bool found_evidence_capture = false;
     bool found_legacy_alias = false;
     bool found_constant = false;
     bool found_repeated_literal = false;
@@ -175,6 +180,7 @@ int main() {
       found_lookup = found_lookup || edge.value("class", "") == "lookup_key";
       found_column_binding = found_column_binding || edge.value("class", "") == "column_binding";
       found_terminal = found_terminal || edge.value("class", "") == "declared_terminal";
+      found_evidence_capture = found_evidence_capture || edge.value("class", "") == "evidence_capture";
       found_legacy_alias = found_legacy_alias || edge.value("class", "") == "legacy_alias";
     }
     for (const auto& finding : workbench["findings"]) {
@@ -206,6 +212,7 @@ int main() {
     Assert(found_lookup, "Workbench should expose a lookup-key edge");
     Assert(found_column_binding, "Workbench should expose header-derived bindings");
     Assert(found_terminal, "Workbench should expose declared terminal relationships");
+    Assert(found_evidence_capture, "Workbench should expose declared evidence-capture relationships");
     Assert(found_legacy_alias, "Workbench should expose legacy slug aliases rather than guessing by label");
     Assert(found_constant, "Workbench should identify constant dataset columns");
     Assert(found_constant_recommendation,

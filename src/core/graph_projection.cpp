@@ -666,6 +666,7 @@ json BuildRelationshipWorkbench(const ChecklistGraph& graph,
   std::size_t predicate_count = 0;
   std::size_t binding_count = 0;
   std::size_t dataset_count = 0;
+  std::size_t evidence_count = 0;
 
   const auto add_node = [&nodes, &node_ids](const std::string& id, const std::string& kind,
                                              const std::string& title, const std::string& subtitle,
@@ -922,6 +923,40 @@ json BuildRelationshipWorkbench(const ChecklistGraph& graph,
       }
     }
 
+    const json evidence_sources = declarations.value("evidence_sources", json::array());
+    if (!evidence_sources.is_array()) {
+      add_finding("EVIDENCE_SOURCES_INVALID", "warning",
+                  "evidence_sources must be an array when present.", "");
+    } else {
+      std::size_t evidence_index = 0;
+      for (const auto& source : evidence_sources) {
+        if (!source.is_object()) {
+          continue;
+        }
+        const std::string slug_id = source.value("slug_id", "");
+        const std::string name =
+            source.value("name", source.value("kind", "Declared evidence source"));
+        std::string legacy_alias;
+        const auto matching = resolve_addresses(slug_id, &legacy_alias);
+        if (slug_id.empty() || matching.empty()) {
+          add_finding("EVIDENCE_SOURCE_TARGET_MISSING", "warning",
+                      "A declared evidence source does not identify an imported target row.", "",
+                      {{"slug_id", slug_id}, {"name", name}});
+          continue;
+        }
+        const std::string source_id = "evidence:" + std::to_string(evidence_index++);
+        const std::string field = source.value("field", "report evidence");
+        add_node(source_id, "evidence_source", name, field, source);
+        render_legacy_alias(legacy_alias, matching);
+        for (const auto& address_id : matching) {
+          add_edge(source_id, "row:" + address_id, "evidence_capture", field, source);
+          connected_addresses.insert(address_id);
+          declared_support_addresses.insert(address_id);
+        }
+        ++evidence_count;
+      }
+    }
+
     const json datasets = declarations.value("datasets", json::array());
     if (!datasets.is_array()) {
       add_finding("DATASETS_INVALID", "warning", "datasets must be an array when present.", "");
@@ -1163,6 +1198,7 @@ json BuildRelationshipWorkbench(const ChecklistGraph& graph,
             {"predicate_edges", predicate_count},
             {"binding_edges", binding_count},
             {"datasets", dataset_count},
+            {"evidence_sources", evidence_count},
             {"orphan_rows", orphan_count},
             {"self_only_rows", self_only_count}}}};
 }

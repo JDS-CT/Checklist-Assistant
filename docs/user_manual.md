@@ -427,7 +427,7 @@ The manifest uses UTF-8 JSON and the `chax-report-images-v1` schema:
 
 `preview` is required and must be a PNG or JPEG relative to the manifest directory so both HTML and LaTeX can render it. `original` is optional and may name the retained full-resolution source file. All declared paths must be relative and may not contain `.` or `..`; exports reject unsafe manifests rather than reading files outside the checklist's evidence folder.
 
-Use `{{CapturedImages}}` in an HTML template and `{{CapturedImageFigures}}` in a LaTeX template. The default templates include these placeholders. The renderer groups previews in pages of four (a two-by-two grid), carries captions and provenance into the visible report, and preserves the original files under `images/`. Export responses include `image_count` and `images_manifest_path` when image evidence is present.
+Use `{{CapturedImages}}` in an HTML template and `{{CapturedImageFigures}}` in a LaTeX template. The default templates include these placeholders. The renderer groups previews in pages of six (a two-column by three-row grid), carries captions and provenance into the visible report, and preserves the original files under `images/`. Export responses include `image_count` and `images_manifest_path` when image evidence is present.
 
 ## 14. Login and Roles
 

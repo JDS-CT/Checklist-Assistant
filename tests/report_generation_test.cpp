@@ -500,7 +500,7 @@ Value: {{slug_)" << addr << R"(_result}}
     }
 
     // Template 6e: captured image evidence is copied into a self-contained report bundle and
-    // rendered as four print-safe cards per page in HTML and LaTeX.
+    // rendered as six print-safe cards per page in HTML and LaTeX.
     {
       current_step = "captured report images";
       const std::string checklist = "image-evidence";
@@ -508,7 +508,7 @@ Value: {{slug_)" << addr << R"(_result}}
       const auto slugs = BuildSlugs(checklist, image_instance_id);
       const auto image_root = reports_root / image_instance_id / "images" / "evidence";
       std::filesystem::create_directories(image_root);
-      for (int image_number = 1; image_number <= 4; ++image_number) {
+      for (int image_number = 1; image_number <= 6; ++image_number) {
         std::ofstream preview(image_root / ("capture-" + std::to_string(image_number) + ".png"),
                               std::ios::binary);
         preview << "PNG test preview " << image_number;
@@ -523,7 +523,9 @@ Value: {{slug_)" << addr << R"(_result}}
     {"preview": "evidence/capture-1.png", "original": "evidence/capture-1.tif", "procedure": "Image One", "caption": "Caption & one", "captured_at": "2026-01-01T00:00:00Z", "source": "Test collector"},
     {"preview": "evidence/capture-2.png", "original": "evidence/capture-2.tif", "procedure": "Image Two"},
     {"preview": "evidence/capture-3.png", "original": "evidence/capture-3.tif", "procedure": "Image Three"},
-    {"preview": "evidence/capture-4.png", "original": "evidence/capture-4.tif", "procedure": "Image Four"}
+    {"preview": "evidence/capture-4.png", "original": "evidence/capture-4.tif", "procedure": "Image Four"},
+    {"preview": "evidence/capture-5.png", "original": "evidence/capture-5.tif", "procedure": "Image Five"},
+    {"preview": "evidence/capture-6.png", "original": "evidence/capture-6.tif", "procedure": "Image Six"}
   ]
 })";
       manifest.close();
@@ -542,15 +544,17 @@ Value: {{slug_)" << addr << R"(_result}}
           core::HtmlReportConfig{reports_root, templates_root}, checklist, image_instance_id,
           "instance||" + image_instance_id, slugs);
       const std::string html_content = ReadFile(html_report.output_path);
-      Assert(html_report.image_count == 4, "HTML report should count copied image evidence");
+      Assert(html_report.image_count == 6, "HTML report should count copied image evidence");
       Assert(std::filesystem::exists(html_report.images_manifest_path),
              "HTML report should retain a copied image manifest");
       Assert(std::filesystem::exists(html_report.output_dir / "images" / "evidence" / "capture-1.png"),
              "HTML report should retain the preview image");
       Assert(std::filesystem::exists(html_report.output_dir / "images" / "evidence" / "capture-1.tif"),
              "HTML report should retain the original image");
-      Assert(CountOccurrences(html_content, "captured-image-card") == 4,
-             "HTML report should render four image cards");
+      Assert(CountOccurrences(html_content, "captured-image-card") == 6,
+             "HTML report should render six image cards");
+      Assert(CountOccurrences(html_content, "captured-image-page") == 1,
+             "HTML report should group six images into one print page");
       Assert(html_content.find("Caption &amp; one") != std::string::npos,
              "HTML report should escape manifest captions");
       Assert(html_content.find("images/evidence/capture-1.tif") != std::string::npos,
@@ -560,8 +564,8 @@ Value: {{slug_)" << addr << R"(_result}}
           core::TexReportConfig{reports_root, templates_root}, checklist, image_instance_id,
           "instance||" + image_instance_id, slugs);
       const std::string tex_content = ReadFile(tex_report.output_path);
-      Assert(tex_report.image_count == 4, "LaTeX report should count copied image evidence");
-      Assert(CountOccurrences(tex_content, "\\includegraphics") == 4,
+      Assert(tex_report.image_count == 6, "LaTeX report should count copied image evidence");
+      Assert(CountOccurrences(tex_content, "\\includegraphics") == 6,
              "LaTeX report should render every evidence preview");
       Assert(tex_content.find("\\detokenize{images/evidence/capture-1.png}") != std::string::npos,
              "LaTeX report should use report-local preview paths");
