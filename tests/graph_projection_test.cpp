@@ -181,7 +181,7 @@ int main() {
       if (finding.value("code", "") == "CONSTANT_COLUMN") {
         found_constant = true;
         found_constant_recommendation =
-            finding["details"].value("recommendation", "").find("future normalization") !=
+            finding["details"].value("recommendation", "").find("value ownership") !=
             std::string::npos;
       }
       found_repeated_literal = found_repeated_literal || finding.value("code", "") == "REPEATED_LITERAL";

@@ -1028,9 +1028,9 @@ json BuildRelationshipWorkbench(const ChecklistGraph& graph,
                          {"distinct", distinct_values.size()},
                          {"characters", character_count},
                          {"recommendation",
-                          "Review a future normalization: store the shared literal once in a named "
-                          "reference record, retain this CSV column through a reviewed migration, and "
-                          "bind consumers explicitly. No data is changed by this finding."}});
+                          "Inspect value ownership in the authored checklist. When the literal belongs "
+                          "to a target row, move it through an existing predicate chain and verify a "
+                          "freshly imported instance before removing the duplicated source column."}});
           }
           if (nonempty_count > 1 && nonempty_count < record_count && distinct_values.size() == 1) {
             add_finding("REPEATED_LITERAL", "info",
