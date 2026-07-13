@@ -57,11 +57,13 @@ struct TexReportResult {
   std::filesystem::path output_path;
   std::filesystem::path output_dir;
   std::filesystem::path jsonl_path;
+  std::filesystem::path images_manifest_path;
   bool template_used = false;
   bool jsonl_written = false;
   std::filesystem::path template_path;
   std::string generated_at;
   std::size_t row_count = 0;
+  std::size_t image_count = 0;
   std::vector<std::pair<std::string, std::string>> alias_hits;
 };
 
@@ -71,11 +73,13 @@ struct HtmlReportResult {
   std::filesystem::path output_path;
   std::filesystem::path output_dir;
   std::filesystem::path jsonl_path;
+  std::filesystem::path images_manifest_path;
   bool template_used = false;
   bool jsonl_written = false;
   std::filesystem::path template_path;
   std::string generated_at;
   std::size_t row_count = 0;
+  std::size_t image_count = 0;
   std::vector<std::pair<std::string, std::string>> alias_hits;
 };
 

@@ -99,6 +99,23 @@ struct PreparedReportContent {
   std::vector<std::pair<std::string, std::string>> alias_hits;
 };
 
+struct CapturedReportImage {
+  fs::path preview_path;
+  fs::path original_path;
+  std::string preview_relative;
+  std::string original_relative;
+  std::string caption;
+  std::string procedure;
+  std::string procedure_slug_id;
+  std::string captured_at;
+  std::string source;
+};
+
+struct CapturedReportImages {
+  std::vector<CapturedReportImage> images;
+  fs::path copied_manifest_path;
+};
+
 std::string ReadFile(const fs::path& path);
 
 std::string SanitizeToken(const std::string& value) {
@@ -1210,6 +1227,273 @@ std::string ReadFile(const fs::path& path) {
   return buffer.str();
 }
 
+bool IsSafeEvidenceRelativePath(const std::string& value) {
+  if (value.empty()) {
+    return false;
+  }
+  const fs::path path(value);
+  if (path.empty() || path.is_absolute() || path.has_root_name() || path.has_root_directory()) {
+    return false;
+  }
+  for (const auto& component : path) {
+    if (component == "." || component == "..") {
+      return false;
+    }
+  }
+  return true;
+}
+
+std::string ReadRequiredManifestString(const json& object, const char* field,
+                                       const fs::path& manifest_path) {
+  if (!object.contains(field) || !object.at(field).is_string()) {
+    throw std::runtime_error("Report image manifest requires string field '" + std::string(field) +
+                             "': " + manifest_path.string());
+  }
+  const std::string value = object.at(field).get<std::string>();
+  if (Trim(value).empty()) {
+    throw std::runtime_error("Report image manifest field '" + std::string(field) +
+                             "' must not be blank: " + manifest_path.string());
+  }
+  return value;
+}
+
+std::string ReadOptionalManifestString(const json& object, const char* field,
+                                       const fs::path& manifest_path) {
+  if (!object.contains(field) || object.at(field).is_null()) {
+    return {};
+  }
+  if (!object.at(field).is_string()) {
+    throw std::runtime_error("Report image manifest field '" + std::string(field) +
+                             "' must be a string: " + manifest_path.string());
+  }
+  return object.at(field).get<std::string>();
+}
+
+void RequirePreviewImageFormat(const fs::path& preview, const fs::path& manifest_path) {
+  const std::string extension = ToLower(preview.extension().string());
+  if (extension == ".png" || extension == ".jpg" || extension == ".jpeg") {
+    return;
+  }
+  throw std::runtime_error(
+      "Report image manifest preview must use PNG or JPEG so HTML and LaTeX can render it: " +
+      preview.string() + " (" + manifest_path.string() + ")");
+}
+
+void CopyEvidenceFile(const fs::path& source_root, const fs::path& output_root,
+                      const std::string& relative, const fs::path& manifest_path,
+                      std::unordered_set<std::string>& copied_paths) {
+  if (!IsSafeEvidenceRelativePath(relative)) {
+    throw std::runtime_error("Report image manifest path must be a safe relative path: " + relative +
+                             " (" + manifest_path.string() + ")");
+  }
+  if (!copied_paths.insert(relative).second) {
+    return;
+  }
+
+  const fs::path source = source_root / fs::path(relative);
+  std::error_code ec;
+  if (!fs::is_regular_file(source, ec) || ec) {
+    throw std::runtime_error("Report image manifest references a missing file: " + source.string());
+  }
+  const fs::path destination = output_root / fs::path(relative);
+  fs::create_directories(destination.parent_path(), ec);
+  if (ec) {
+    throw std::runtime_error("Failed to create report image output directory: " +
+                             destination.parent_path().string());
+  }
+  if (!fs::copy_file(source, destination, fs::copy_options::overwrite_existing, ec) || ec) {
+    throw std::runtime_error("Failed to copy report image evidence: " + source.string() + " -> " +
+                             destination.string());
+  }
+}
+
+CapturedReportImages PrepareCapturedReportImages(const ReportOutputPaths& paths,
+                                                 const std::string& instance_id) {
+  CapturedReportImages captured;
+  const fs::path source_root = paths.reports_root / SanitizeToken(instance_id) / "images";
+  const fs::path manifest_path = source_root / "manifest.json";
+  std::error_code ec;
+  if (!fs::exists(manifest_path, ec) || ec) {
+    return captured;
+  }
+  if (!fs::is_regular_file(manifest_path, ec) || ec) {
+    throw std::runtime_error("Report image manifest is not a regular file: " + manifest_path.string());
+  }
+
+  json manifest;
+  try {
+    std::ifstream input(manifest_path, std::ios::binary);
+    if (!input.is_open()) {
+      throw std::runtime_error("Failed to open report image manifest");
+    }
+    input >> manifest;
+  } catch (const std::exception& error) {
+    throw std::runtime_error("Failed to parse report image manifest " + manifest_path.string() +
+                             ": " + error.what());
+  }
+
+  if (!manifest.is_object() || !manifest.contains("schema") || !manifest.at("schema").is_string() ||
+      manifest.at("schema").get<std::string>() != "chax-report-images-v1") {
+    throw std::runtime_error("Report image manifest must declare schema 'chax-report-images-v1': " +
+                             manifest_path.string());
+  }
+  if (!manifest.contains("images") || !manifest.at("images").is_array()) {
+    throw std::runtime_error("Report image manifest requires an images array: " +
+                             manifest_path.string());
+  }
+
+  const fs::path output_root = paths.output_dir / "images";
+  fs::create_directories(output_root, ec);
+  if (ec) {
+    throw std::runtime_error("Failed to create report image output directory: " + output_root.string());
+  }
+
+  std::unordered_set<std::string> copied_paths;
+  captured.images.reserve(manifest.at("images").size());
+  for (const auto& item : manifest.at("images")) {
+    if (!item.is_object()) {
+      throw std::runtime_error("Each report image manifest entry must be an object: " +
+                               manifest_path.string());
+    }
+    CapturedReportImage image;
+    image.preview_relative = ReadRequiredManifestString(item, "preview", manifest_path);
+    if (!IsSafeEvidenceRelativePath(image.preview_relative)) {
+      throw std::runtime_error("Report image preview must be a safe relative path: " +
+                               image.preview_relative + " (" + manifest_path.string() + ")");
+    }
+    image.preview_path = fs::path(image.preview_relative);
+    RequirePreviewImageFormat(image.preview_path, manifest_path);
+    image.original_relative = ReadOptionalManifestString(item, "original", manifest_path);
+    if (!image.original_relative.empty() && !IsSafeEvidenceRelativePath(image.original_relative)) {
+      throw std::runtime_error("Report image original must be a safe relative path: " +
+                               image.original_relative + " (" + manifest_path.string() + ")");
+    }
+    image.original_path = fs::path(image.original_relative);
+    image.caption = ReadOptionalManifestString(item, "caption", manifest_path);
+    image.procedure = ReadOptionalManifestString(item, "procedure", manifest_path);
+    image.procedure_slug_id = ReadOptionalManifestString(item, "procedure_slug_id", manifest_path);
+    image.captured_at = ReadOptionalManifestString(item, "captured_at", manifest_path);
+    image.source = ReadOptionalManifestString(item, "source", manifest_path);
+
+    CopyEvidenceFile(source_root, output_root, image.preview_relative, manifest_path, copied_paths);
+    if (!image.original_relative.empty()) {
+      CopyEvidenceFile(source_root, output_root, image.original_relative, manifest_path, copied_paths);
+    }
+    captured.images.push_back(std::move(image));
+  }
+
+  const fs::path copied_manifest = output_root / "manifest.json";
+  if (!fs::copy_file(manifest_path, copied_manifest, fs::copy_options::overwrite_existing, ec) || ec) {
+    throw std::runtime_error("Failed to copy report image manifest: " + manifest_path.string());
+  }
+  captured.copied_manifest_path = copied_manifest;
+  return captured;
+}
+
+std::string EvidenceOutputRelativePath(const std::string& relative) {
+  return (fs::path("images") / fs::path(relative)).generic_string();
+}
+
+std::string BuildCapturedImagesHtml(const std::vector<CapturedReportImage>& images) {
+  if (images.empty()) {
+    return {};
+  }
+
+  std::ostringstream out;
+  out << "<section class=\"captured-images\">"
+      << "<header class=\"captured-images-head\"><h2>Captured Evidence</h2>"
+      << "<p>Images captured during this checklist run. Full-resolution source files are retained "
+         "beside this report.</p></header>";
+  for (std::size_t page_start = 0; page_start < images.size(); page_start += 4) {
+    const std::size_t page_end = std::min(page_start + 4, images.size());
+    out << "<div class=\"captured-image-page\">";
+    for (std::size_t index = page_start; index < page_end; ++index) {
+      const auto& image = images[index];
+      const std::string preview = EvidenceOutputRelativePath(image.preview_relative);
+      const std::string original = image.original_relative.empty()
+                                       ? std::string{}
+                                       : EvidenceOutputRelativePath(image.original_relative);
+      const std::string label = image.procedure.empty() ? "Checklist evidence" : image.procedure;
+      out << "<figure class=\"captured-image-card\">";
+      if (!original.empty()) {
+        out << "<a class=\"captured-image-link\" href=\"" << EscapeHtml(original)
+            << "\" title=\"Open the full-resolution source file\">";
+      }
+      out << "<img src=\"" << EscapeHtml(preview) << "\" alt=\""
+          << EscapeHtml(label) << "\" loading=\"lazy\">";
+      if (!original.empty()) {
+        out << "</a>";
+      }
+      out << "<figcaption><strong>" << EscapeHtml(label) << "</strong>";
+      if (!image.captured_at.empty()) {
+        out << "<span>Captured: " << EscapeHtml(image.captured_at) << "</span>";
+      }
+      if (!image.caption.empty()) {
+        out << "<span>" << EscapeHtml(image.caption) << "</span>";
+      }
+      if (!image.source.empty()) {
+        out << "<span>Source: " << EscapeHtml(image.source) << "</span>";
+      }
+      out << "</figcaption></figure>";
+    }
+    out << "</div>";
+  }
+  out << "</section>";
+  return out.str();
+}
+
+std::string BuildCapturedImagesLatex(const std::vector<CapturedReportImage>& images) {
+  if (images.empty()) {
+    return {};
+  }
+
+  const auto render_card = [](const CapturedReportImage& image) {
+    const std::string label = image.procedure.empty() ? "Checklist evidence" : image.procedure;
+    const std::string preview = EvidenceOutputRelativePath(image.preview_relative);
+    std::ostringstream card;
+    card << "\\begin{minipage}[t]{0.48\\linewidth}\\centering\n"
+         << "\\includegraphics[width=\\linewidth,height=0.30\\textheight,keepaspectratio]"
+         << "{\\detokenize{" << preview << "}}\\\\\n"
+         << "\\footnotesize\\textbf{" << EscapeLatex(label) << "}\\\\\n";
+    if (!image.captured_at.empty()) {
+      card << "\\scriptsize Captured: " << EscapeLatex(image.captured_at) << "\\\\\n";
+    }
+    if (!image.caption.empty()) {
+      card << "\\scriptsize " << EscapeLatex(image.caption) << "\\\\\n";
+    }
+    if (!image.source.empty()) {
+      card << "\\scriptsize Source: " << EscapeLatex(image.source) << "\\\\\n";
+    }
+    card << "\\end{minipage}";
+    return card.str();
+  };
+
+  std::ostringstream out;
+  for (std::size_t page_start = 0; page_start < images.size(); page_start += 4) {
+    const std::size_t page_end = std::min(page_start + 4, images.size());
+    out << "\\clearpage\n\\section*{Captured Evidence}\n\\begin{center}\n";
+    for (std::size_t row_start = page_start; row_start < page_end; row_start += 2) {
+      out << render_card(images[row_start]);
+      if (row_start + 1 < page_end) {
+        out << "\\hfill\n" << render_card(images[row_start + 1]);
+      }
+      out << "\\par\\vspace{4mm}\n";
+    }
+    out << "\\end{center}\n";
+  }
+  return out.str();
+}
+
+void AddCapturedImagesContext(PreparedReportContent& prepared,
+                              const CapturedReportImages& captured) {
+  prepared.context["captured_images_count"] = std::to_string(captured.images.size());
+  prepared.context["images_manifest_filename"] =
+      captured.copied_manifest_path.empty() ? "" : "images/manifest.json";
+  prepared.context["CapturedImages"] = BuildCapturedImagesHtml(captured.images);
+  prepared.context["CapturedImageFigures"] = BuildCapturedImagesLatex(captured.images);
+  AddDashedAliases(prepared.context);
+}
+
 std::string EscapeFdfString(const std::string& value) {
   std::string out;
   out.reserve(value.size() * 2);
@@ -1367,10 +1651,12 @@ Instance ID & {{instance-id}} \\
 Instance Principal & {{instance-principal}} \\
 Timestamp (UTC) & {{timestamp}} \\
 Rendered Rows & {{row-count}} \\
+Captured Images & {{captured-images-count}} \\
 Template & {{template-name}} \\
 \end{tabular}
 
 {{AutoTables}}
+{{CapturedImageFigures}}
 \end{document}
 )";
 }
@@ -1715,10 +2001,81 @@ std::string DefaultHtmlTemplate() {
       color: var(--muted);
     }
 
+    .captured-images {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: calc(var(--radius) + 6px);
+      padding: 24px;
+      box-shadow: var(--shadow);
+    }
+
+    .captured-images-head {
+      margin-bottom: 18px;
+    }
+
+    .captured-images-head h2 {
+      margin: 0;
+      font-family: var(--font-display);
+      font-size: 1.8rem;
+    }
+
+    .captured-images-head p {
+      margin: 6px 0 0;
+      color: var(--muted);
+    }
+
+    .captured-image-page {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 18px;
+    }
+
+    .captured-image-page + .captured-image-page {
+      margin-top: 22px;
+    }
+
+    .captured-image-card {
+      margin: 0;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      overflow: hidden;
+      background: var(--surface-alt);
+      break-inside: avoid;
+    }
+
+    .captured-image-link {
+      display: block;
+      background: #101820;
+    }
+
+    .captured-image-card img {
+      display: block;
+      width: 100%;
+      height: auto;
+      max-height: 420px;
+      object-fit: contain;
+      margin: 0 auto;
+    }
+
+    .captured-image-card figcaption {
+      display: grid;
+      gap: 3px;
+      padding: 10px 12px 12px;
+      color: var(--muted);
+      font-size: 0.86rem;
+      line-height: 1.35;
+    }
+
+    .captured-image-card figcaption strong {
+      color: var(--text);
+      font-size: 0.92rem;
+    }
+
     @media (max-width: 900px) {
       .hero-grid,
       .summary-grid,
-      .meta-grid {
+      .meta-grid,
+      .captured-image-page {
         grid-template-columns: 1fr;
       }
 
@@ -1751,14 +2108,39 @@ std::string DefaultHtmlTemplate() {
       .hero,
       .tables-panel,
       .summary-card,
-      .table-wrap {
+      .table-wrap,
+      .captured-images {
         box-shadow: none;
       }
 
       .hero,
       .tables-panel,
-      .table-section {
+      .table-section,
+      .captured-image-card {
         break-inside: avoid;
+      }
+
+      .captured-images {
+        break-before: page;
+        page-break-before: always;
+        border: 0;
+        padding: 0;
+      }
+
+      .captured-image-page {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 6mm;
+        break-after: page;
+        page-break-after: always;
+      }
+
+      .captured-image-page:last-child {
+        break-after: auto;
+        page-break-after: auto;
+      }
+
+      .captured-image-card img {
+        max-height: 92mm;
       }
     }
   </style>
@@ -1832,6 +2214,7 @@ std::string DefaultHtmlTemplate() {
       </div>
       {{AutoTables}}
     </section>
+    {{CapturedImages}}
   </div>
 </body>
 </html>
@@ -1992,7 +2375,8 @@ std::string RenderLatexReport(const std::string& template_body, const TemplateCo
   safe_context.reserve(context.size() + 2);
   for (const auto& entry : context) {
     const std::string& key = entry.first;
-    if (key == "AutoTables" || key == "AutoGeneratedTablePages") {
+    if (key == "AutoTables" || key == "AutoGeneratedTablePages" ||
+        key == "CapturedImageFigures") {
       safe_context[key] = entry.second;
     } else {
       safe_context[key] = EscapeLatex(entry.second);
@@ -2013,7 +2397,8 @@ std::string RenderHtmlReport(const std::string& template_body, const TemplateCon
   safe_context.reserve(context.size() + 2);
   for (const auto& entry : context) {
     const std::string& key = entry.first;
-    if (key == "AutoTables" || key == "AutoGeneratedTablePages") {
+    if (key == "AutoTables" || key == "AutoGeneratedTablePages" ||
+        key == "CapturedImages") {
       safe_context[key] = entry.second;
     } else {
       safe_context[key] = EscapeHtml(entry.second);
@@ -2054,10 +2439,15 @@ TexReportResult GenerateTexReport(const TexReportConfig& config, const std::stri
     result.template_path = resolved_template.path;
   }
 
+  const CapturedReportImages captured_images = PrepareCapturedReportImages(paths, instance_id);
+  result.image_count = captured_images.images.size();
+  result.images_manifest_path = captured_images.copied_manifest_path;
+
   PreparedReportContent prepared = PrepareReportContent(
       resolved_template.placeholders, checklist, instance_id, instance_principal, slugs,
       slug_aliases, result.generated_at, result.template_used, result.template_path,
       result.output_dir, result.output_path);
+  AddCapturedImagesContext(prepared, captured_images);
   result.row_count = prepared.row_count;
   result.alias_hits = prepared.alias_hits;
   if (context_out) {
@@ -2111,10 +2501,15 @@ HtmlReportResult GenerateHtmlReport(const HtmlReportConfig& config, const std::s
     result.template_path = resolved_template.path;
   }
 
+  const CapturedReportImages captured_images = PrepareCapturedReportImages(paths, instance_id);
+  result.image_count = captured_images.images.size();
+  result.images_manifest_path = captured_images.copied_manifest_path;
+
   PreparedReportContent prepared = PrepareReportContent(
       resolved_template.placeholders, checklist, instance_id, instance_principal, slugs,
       slug_aliases, result.generated_at, result.template_used, result.template_path,
       result.output_dir, result.output_path);
+  AddCapturedImagesContext(prepared, captured_images);
   result.row_count = prepared.row_count;
   result.alias_hits = prepared.alias_hits;
   if (context_out) {

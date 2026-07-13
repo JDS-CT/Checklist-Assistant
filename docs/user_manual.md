@@ -402,6 +402,33 @@ Supported row fields include `procedure`, `action`, `spec`, `result`, `status`, 
 
 Generated report folders live under `checklists/<pack>/<checklist>/reports/<instance_id>_<timestamp>/` and usually contain renderer output plus a JSONL sidecar.
 
+### Captured Report Images
+
+Images captured while a checklist is running are staged separately from authored `media/` and `img/` assets. Put an ignored, instance-specific manifest at `reports/<instance_id>/images/manifest.json`; the next HTML or LaTeX export copies the manifest and every declared file into the generated report folder's `images/` directory. That makes the generated report self-contained and lets the source capture area be cleaned independently later.
+
+The manifest uses UTF-8 JSON and the `chax-report-images-v1` schema:
+
+```json
+{
+  "schema": "chax-report-images-v1",
+  "images": [
+    {
+      "preview": "capture-001.png",
+      "original": "capture-001.tif",
+      "procedure_slug_id": "optional-row-id",
+      "procedure": "Optional procedure label",
+      "caption": "What the operator observed",
+      "captured_at": "2026-01-01T00:00:00Z",
+      "source": "Optional capture tool"
+    }
+  ]
+}
+```
+
+`preview` is required and must be a PNG or JPEG relative to the manifest directory so both HTML and LaTeX can render it. `original` is optional and may name the retained full-resolution source file. All declared paths must be relative and may not contain `.` or `..`; exports reject unsafe manifests rather than reading files outside the checklist's evidence folder.
+
+Use `{{CapturedImages}}` in an HTML template and `{{CapturedImageFigures}}` in a LaTeX template. The default templates include these placeholders. The renderer groups previews in pages of four (a two-by-two grid), carries captions and provenance into the visible report, and preserves the original files under `images/`. Export responses include `image_count` and `images_manifest_path` when image evidence is present.
+
 ## 14. Login and Roles
 
 Runtime admin credentials come from environment variables or generated startup credentials. Tests may use a hard-coded helper password in in-memory servers, but the normal runtime should not assume that password.

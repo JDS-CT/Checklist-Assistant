@@ -499,6 +499,98 @@ Value: {{slug_)" << addr << R"(_result}}
       RecordStep(current_step, true, "html template keep/omit ok");
     }
 
+    // Template 6e: captured image evidence is copied into a self-contained report bundle and
+    // rendered as four print-safe cards per page in HTML and LaTeX.
+    {
+      current_step = "captured report images";
+      const std::string checklist = "image-evidence";
+      const std::string image_instance_id = "IMAGES0000000001";
+      const auto slugs = BuildSlugs(checklist, image_instance_id);
+      const auto image_root = reports_root / image_instance_id / "images" / "evidence";
+      std::filesystem::create_directories(image_root);
+      for (int image_number = 1; image_number <= 4; ++image_number) {
+        std::ofstream preview(image_root / ("capture-" + std::to_string(image_number) + ".png"),
+                              std::ios::binary);
+        preview << "PNG test preview " << image_number;
+        std::ofstream original(image_root / ("capture-" + std::to_string(image_number) + ".tif"),
+                               std::ios::binary);
+        original << "TIFF test original " << image_number;
+      }
+      std::ofstream manifest(reports_root / image_instance_id / "images" / "manifest.json");
+      manifest << R"({
+  "schema": "chax-report-images-v1",
+  "images": [
+    {"preview": "evidence/capture-1.png", "original": "evidence/capture-1.tif", "procedure": "Image One", "caption": "Caption & one", "captured_at": "2026-01-01T00:00:00Z", "source": "Test collector"},
+    {"preview": "evidence/capture-2.png", "original": "evidence/capture-2.tif", "procedure": "Image Two"},
+    {"preview": "evidence/capture-3.png", "original": "evidence/capture-3.tif", "procedure": "Image Three"},
+    {"preview": "evidence/capture-4.png", "original": "evidence/capture-4.tif", "procedure": "Image Four"}
+  ]
+})";
+      manifest.close();
+
+      std::filesystem::create_directories(templates_root / "html");
+      std::filesystem::create_directories(templates_root / "tex");
+      std::ofstream html_template(templates_root / "html" / (checklist + ".html"));
+      html_template << "<!doctype html><html><body>{{CapturedImages}}</body></html>\n";
+      html_template.close();
+      std::ofstream tex_template(templates_root / "tex" / (checklist + ".tex"));
+      tex_template << "\\documentclass{article}\\usepackage{graphicx}\\begin{document}\n"
+                   << "{{CapturedImageFigures}}\n\\end{document}\n";
+      tex_template.close();
+
+      const auto html_report = core::GenerateHtmlReport(
+          core::HtmlReportConfig{reports_root, templates_root}, checklist, image_instance_id,
+          "instance||" + image_instance_id, slugs);
+      const std::string html_content = ReadFile(html_report.output_path);
+      Assert(html_report.image_count == 4, "HTML report should count copied image evidence");
+      Assert(std::filesystem::exists(html_report.images_manifest_path),
+             "HTML report should retain a copied image manifest");
+      Assert(std::filesystem::exists(html_report.output_dir / "images" / "evidence" / "capture-1.png"),
+             "HTML report should retain the preview image");
+      Assert(std::filesystem::exists(html_report.output_dir / "images" / "evidence" / "capture-1.tif"),
+             "HTML report should retain the original image");
+      Assert(CountOccurrences(html_content, "captured-image-card") == 4,
+             "HTML report should render four image cards");
+      Assert(html_content.find("Caption &amp; one") != std::string::npos,
+             "HTML report should escape manifest captions");
+      Assert(html_content.find("images/evidence/capture-1.tif") != std::string::npos,
+             "HTML report should link each preview to its original evidence file");
+
+      const auto tex_report = core::GenerateTexReport(
+          core::TexReportConfig{reports_root, templates_root}, checklist, image_instance_id,
+          "instance||" + image_instance_id, slugs);
+      const std::string tex_content = ReadFile(tex_report.output_path);
+      Assert(tex_report.image_count == 4, "LaTeX report should count copied image evidence");
+      Assert(CountOccurrences(tex_content, "\\includegraphics") == 4,
+             "LaTeX report should render every evidence preview");
+      Assert(tex_content.find("\\detokenize{images/evidence/capture-1.png}") != std::string::npos,
+             "LaTeX report should use report-local preview paths");
+      RecordStep(current_step, true, "captured report images ok");
+    }
+
+    // Template 6f: manifests must not traverse outside the checklist-local evidence folder.
+    {
+      current_step = "captured report image path safety";
+      const std::string checklist = "image-evidence-invalid";
+      const std::string image_instance_id = "BADIMAGE000000001";
+      const auto slugs = BuildSlugs(checklist, image_instance_id);
+      const auto image_root = reports_root / image_instance_id / "images";
+      std::filesystem::create_directories(image_root);
+      std::ofstream manifest(image_root / "manifest.json");
+      manifest << R"({"schema":"chax-report-images-v1","images":[{"preview":"../outside.png"}]})";
+      manifest.close();
+      bool rejected = false;
+      try {
+        (void)core::GenerateHtmlReport(core::HtmlReportConfig{reports_root, templates_root},
+                                       checklist, image_instance_id,
+                                       "instance||" + image_instance_id, slugs);
+      } catch (const std::runtime_error&) {
+        rejected = true;
+      }
+      Assert(rejected, "Report image manifests must reject traversal paths");
+      RecordStep(current_step, true, "captured report image path safety ok");
+    }
+
     // Template 7: fillable FDF output.
     {
       current_step = "fillable fdf";

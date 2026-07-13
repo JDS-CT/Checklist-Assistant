@@ -4807,6 +4807,10 @@ void ConfigureServer(platform::HttpServer& server, ChecklistStore& store, OAuthS
             {"directory", report_result.output_dir.string()},
             {"jsonl_path", report_result.jsonl_path.empty() ? json(nullptr) : json(report_result.jsonl_path.string())},
             {"jsonl_written", report_result.jsonl_written},
+            {"images_manifest_path", report_result.images_manifest_path.empty()
+                                         ? json(nullptr)
+                                         : json(report_result.images_manifest_path.string())},
+            {"image_count", report_result.image_count},
             {"source_name", resolved_root->source_name},
             {"source_path", resolved_root->library_root.string()},
             {"pack", resolved_root->pack},
