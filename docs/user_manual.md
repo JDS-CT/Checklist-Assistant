@@ -109,7 +109,18 @@ Core authoring rules:
 - Every procedure block has exactly these bullets in this order: `Action`, `Spec`, `Result`, `Status`, `Comment`.
 - Every procedure block has `#### Instructions`; new authoring should also include `#### Relationships`, even when empty.
 - Template rows leave `Result`, `Status`, and `Comment` empty. Runtime status values should be `Pass`, `Fail`, `NA`, or `Other`.
-- `Procedure`, `Action`, and `Spec` are short summary fields. Put longer operational detail in `Instructions`.
+- `Procedure`, `Action`, and `Spec` are short summary fields. `Action` is a
+  compact operator-facing verb phrase and `Spec` is a compact expected target;
+  each is limited to 32 Unicode scalar values. Put longer operational detail,
+  conditions, evidence expectations, document references, exceptions, and
+  escalation in `Instructions`.
+- A deterministic quantitative `Spec` must be the parseable expression itself,
+  with its unit: for example `= 24 V`, `<= 5 s`, `10 mm..12 mm`, or
+  `[1 V,2 V]`. Do not decorate that expression with prose such as
+  `Resolution <= 5 s at 1 kV`; the verifier no longer sees a comparator or
+  interval at the start of the field and falls back to text comparison. Put the
+  operating condition in `Instructions` instead. See Specification Sections
+  3.1, 4.3.4--4.3.5, 5.5, and 9.5.4.
 - Each row should describe one primary action. Split setup, execution, and review into separate rows when they can be checked separately.
 - Do not invent `slug_id` or `address_id`. Preserve exported source identity lines, or leave relationship blocks empty until an import/export round trip creates real IDs.
 

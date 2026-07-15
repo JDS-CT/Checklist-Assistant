@@ -115,6 +115,15 @@
     return basePath + normalized;
   }
 
+  function resolveMarkdownLinkUrl(value, basePath) {
+    const trimmed = String(value || "").trim();
+    const lowered = trimmed.toLowerCase();
+    // Instructions are author-controlled text. Keep standard portable links,
+    // but do not turn data/blob payloads into clickable navigation targets.
+    if (lowered.startsWith("data:") || lowered.startsWith("blob:")) return "";
+    return resolveMarkdownUrl(trimmed, basePath);
+  }
+
   function inlineMd(text, basePath) {
     const raw = String(text || "");
     const segments = raw.split(/(`[^`]*`)/g);
@@ -140,9 +149,21 @@
       return token;
     });
 
-    let escaped = escapeHtml(withImages);
+    const links = [];
+    const withLinks = withImages.replace(/(^|[^!])\[([^\]]+)\]\(([^)\s]+)\)/g, (match, prefix, label, hrefRaw) => {
+      const href = resolveMarkdownLinkUrl(hrefRaw, basePath);
+      if (!href) return `${prefix}${label}`;
+      const token = `@@LNK${links.length}@@`;
+      links.push(
+        `<a href="${escapeHtmlAttr(href)}" target="_blank" rel="noopener noreferrer">${escapeHtml(label)}</a>`
+      );
+      return `${prefix}${token}`;
+    });
+
+    let escaped = escapeHtml(withLinks);
     escaped = escaped.replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>").replace(/\*(.+?)\*/g, "<em>$1</em>");
     escaped = escaped.replace(/@@IMG(\d+)@@/g, (match, idx) => images[Number(idx)] || "");
+    escaped = escaped.replace(/@@LNK(\d+)@@/g, (match, idx) => links[Number(idx)] || "");
     return escaped;
   }
 
