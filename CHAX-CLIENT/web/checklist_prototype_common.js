@@ -2857,43 +2857,59 @@
       instantiating = true;
       let createdInstanceId = "";
       const workspaceContext = resolveScriptsContext(checklistName);
-      for (const t of templateItems) {
-        const body = {
-          checklist: checklistName,
-          section: t.section || "",
-          procedure: t.procedure || "",
-          action: t.action || "",
-          spec: t.spec || "",
-          instructions: t.instructions || "",
-          slug_id: t.slug_id || "",
-          instance_principal: principal,
-          status: t.status || "",
-          result: t.result || "",
-          comment: t.comment || "",
-        };
+      try {
         if (workspaceContext.pack) {
-          body.source_name = workspaceContext.sourceName || "";
-          body.pack = workspaceContext.pack;
-          body.checklist_dir = workspaceContext.checklistDir || checklistName;
+          // Importing a workspace template is a single server-side transaction.
+          // Creating every row with individual POSTs made large private checklists
+          // appear stalled on machines with higher local request overhead.
+          const imported = await fetchJson("/api/v1/workspace/markdown/import", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              source_name: workspaceContext.sourceName || "",
+              pack: workspaceContext.pack,
+              checklist: workspaceContext.checklistDir || checklistName,
+              instance_principal: principal,
+              replace_instance: true,
+            }),
+          });
+          createdInstanceId = imported.instance_id || "";
+        } else {
+          for (const t of templateItems) {
+            const body = {
+              checklist: checklistName,
+              section: t.section || "",
+              procedure: t.procedure || "",
+              action: t.action || "",
+              spec: t.spec || "",
+              instructions: t.instructions || "",
+              slug_id: t.slug_id || "",
+              instance_principal: principal,
+              status: t.status || "",
+              result: t.result || "",
+              comment: t.comment || "",
+            };
+            const resp = await fetchJson("/api/v1/slugs", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(body),
+            });
+            if (!createdInstanceId) {
+              createdInstanceId = resp.instance_id || resp.data?.instance_id || (resp.address_id || resp.data?.address_id || "").split("||")[1] || "";
+            }
+          }
         }
-        const resp = await fetchJson("/api/v1/slugs", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(body),
-        });
-        if (!createdInstanceId) {
-          createdInstanceId = resp.instance_id || resp.data?.instance_id || (resp.address_id || resp.data?.address_id || "").split("||")[1] || "";
+        if (createdInstanceId) {
+          recordPrincipal(createdInstanceId, principal);
+          if (!instanceOptions.includes(createdInstanceId)) {
+            instanceOptions.push(createdInstanceId);
+            renderInstanceOptions(instanceFilter?.value || "");
+          }
         }
+        return createdInstanceId || true;
+      } finally {
+        instantiating = false;
       }
-      instantiating = false;
-      if (createdInstanceId) {
-        recordPrincipal(createdInstanceId, principal);
-        if (!instanceOptions.includes(createdInstanceId)) {
-          instanceOptions.push(createdInstanceId);
-          renderInstanceOptions(instanceFilter?.value || "");
-        }
-      }
-      return createdInstanceId || true;
     }
 
     function summarizeJsonlContent(content) {
