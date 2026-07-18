@@ -1382,6 +1382,22 @@ CapturedReportImages PrepareCapturedReportImages(const ReportOutputPaths& paths,
     captured.images.push_back(std::move(image));
   }
 
+  if (manifest.contains("attachments")) {
+    if (!manifest.at("attachments").is_array()) {
+      throw std::runtime_error("Report image manifest attachments must be an array: " +
+                               manifest_path.string());
+    }
+    for (const auto& item : manifest.at("attachments")) {
+      if (!item.is_object()) {
+        throw std::runtime_error("Each report attachment manifest entry must be an object: " +
+                                 manifest_path.string());
+      }
+      const std::string attachment_relative =
+          ReadRequiredManifestString(item, "path", manifest_path);
+      CopyEvidenceFile(source_root, output_root, attachment_relative, manifest_path, copied_paths);
+    }
+  }
+
   const fs::path copied_manifest = output_root / "manifest.json";
   if (!fs::copy_file(manifest_path, copied_manifest, fs::copy_options::overwrite_existing, ec) || ec) {
     throw std::runtime_error("Failed to copy report image manifest: " + manifest_path.string());

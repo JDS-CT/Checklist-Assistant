@@ -516,6 +516,13 @@ Value: {{slug_)" << addr << R"(_result}}
                                std::ios::binary);
         original << "TIFF test original " << image_number;
       }
+      const auto attachment_root = reports_root / image_instance_id / "images" / "raw-snapshots" /
+                                   "capture-1";
+      std::filesystem::create_directories(attachment_root);
+      std::ofstream raw_readbacks(attachment_root / "readbacks.csv", std::ios::binary);
+      raw_readbacks << "channel,reading\nTEMP_SENSOR_1,21.5\n";
+      std::ofstream raw_metadata(attachment_root / "metadata.json", std::ios::binary);
+      raw_metadata << "{\"source\":\"Test collector\"}\n";
       std::ofstream manifest(reports_root / image_instance_id / "images" / "manifest.json");
       manifest << R"({
   "schema": "chax-report-images-v1",
@@ -526,6 +533,10 @@ Value: {{slug_)" << addr << R"(_result}}
     {"preview": "evidence/capture-4.png", "original": "evidence/capture-4.tif", "procedure": "Image Four"},
     {"preview": "evidence/capture-5.png", "original": "evidence/capture-5.tif", "procedure": "Image Five"},
     {"preview": "evidence/capture-6.png", "original": "evidence/capture-6.tif", "procedure": "Image Six"}
+  ],
+  "attachments": [
+    {"path": "raw-snapshots/capture-1/readbacks.csv", "kind": "device-readbacks-csv"},
+    {"path": "raw-snapshots/capture-1/metadata.json", "kind": "device-metadata-json"}
   ]
 })";
       manifest.close();
@@ -551,6 +562,12 @@ Value: {{slug_)" << addr << R"(_result}}
              "HTML report should retain the preview image");
       Assert(std::filesystem::exists(html_report.output_dir / "images" / "evidence" / "capture-1.tif"),
              "HTML report should retain the original image");
+      Assert(std::filesystem::exists(html_report.output_dir / "images" / "raw-snapshots" /
+                                     "capture-1" / "readbacks.csv"),
+             "HTML report should retain declared raw evidence attachments");
+      Assert(std::filesystem::exists(html_report.output_dir / "images" / "raw-snapshots" /
+                                     "capture-1" / "metadata.json"),
+             "HTML report should retain declared raw evidence metadata");
       Assert(CountOccurrences(html_content, "captured-image-card") == 6,
              "HTML report should render six image cards");
       Assert(CountOccurrences(html_content, "captured-image-page") == 1,
@@ -581,7 +598,7 @@ Value: {{slug_)" << addr << R"(_result}}
       const auto image_root = reports_root / image_instance_id / "images";
       std::filesystem::create_directories(image_root);
       std::ofstream manifest(image_root / "manifest.json");
-      manifest << R"({"schema":"chax-report-images-v1","images":[{"preview":"../outside.png"}]})";
+      manifest << R"({"schema":"chax-report-images-v1","images":[],"attachments":[{"path":"../outside.csv"}]})";
       manifest.close();
       bool rejected = false;
       try {
