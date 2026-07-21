@@ -82,3 +82,9 @@ In the running application, open Portal Settings and add the private workspace a
 The reference implementation source is MIT licensed. Specification material under `spec/` is Apache-2.0 licensed. Checklist Assistant project identity and compatibility wording are governed by `TRADEMARK.md` and `COMPATIBILITY.md`.
 
 Private or customer-specific asset packs are not part of this public repository. Public examples should stay generic, reproducible, and free of private operational details.
+
+## Public Change Boundary
+
+- Documentation, tests, and fixtures must use deliberately invented, product-neutral examples rather than adapted customer data.
+- A private checklist may customize its local templates and sidecars, but a checklist-specific placeholder or staged-file convention is not by itself a public-core feature. Propose a generic contract separately for review.
+- Automated or AI-proposed public changes should remain staged for human inspection and must not be committed or published without explicit repository-owner approval.

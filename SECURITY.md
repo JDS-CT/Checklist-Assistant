@@ -19,3 +19,5 @@ Hosted/LAN hardening is tracked in `TODO.md`. Before broader deployment, the pro
 ## Reporting Issues
 
 For now, open a GitHub issue with a clear reproduction. Do not include private checklist packs, credentials, logs with secrets, or customer material.
+
+Examples in issues, documentation, tests, and fixtures must be invented and product-neutral. Treat customer part numbers, product or machine identifiers, measured limits, report templates, and operational wording as customer material even when they contain no credential or personal information. Replace such material with a fresh generic example rather than attempting a minimal redaction.

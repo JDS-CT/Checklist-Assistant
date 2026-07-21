@@ -377,7 +377,7 @@ int main() {
 
     auto verify_unit_comparator =
         MakeSlug(checklist, "VerifyUnitComparator", instance_principal, user_principal);
-    verify_unit_comparator.spec = "=2.5 mbar";
+    verify_unit_comparator.spec = "=2.5 bar";
     verify_unit_comparator.slug_id = core::ComputeSlugId(
         verify_unit_comparator.checklist, verify_unit_comparator.section,
         verify_unit_comparator.procedure, verify_unit_comparator.action,
@@ -387,25 +387,25 @@ int main() {
     store.UpsertSlug(verify_unit_comparator);
     record_relationship(verify_unit_comparator.address_id, "BoolVerifyValidatedStatus",
                         verify_unit_comparator.address_id);
-    ApplyResultUpdate(store, verify_unit_comparator.address_id, "0.0362594 psi", user_principal);
+    ApplyResultUpdate(store, verify_unit_comparator.address_id, "36.2594 psi", user_principal);
     auto verify_unit_comparator_after = store.GetSlugOrThrow(verify_unit_comparator.address_id);
     Assert(verify_unit_comparator_after.status == core::ChecklistStatus::kPass,
            "Comparator equality should allow conversion-scale tolerance from spec precision");
-    Assert(verify_unit_comparator_after.result.find(" mbar") != std::string::npos,
+    Assert(verify_unit_comparator_after.result.find(" bar") != std::string::npos,
            "Comparator scalar result should normalize to the spec unit for storage/reporting");
-    ApplyResultUpdate(store, verify_unit_comparator.address_id, "0.034 psi", user_principal);
+    ApplyResultUpdate(store, verify_unit_comparator.address_id, "34 psi", user_principal);
     Assert(store.GetSlugOrThrow(verify_unit_comparator.address_id).status == core::ChecklistStatus::kFail,
            "Comparator equality should fail outside precision tolerance");
     ApplyResultUpdate(store, verify_unit_comparator.address_id, "2.5", user_principal);
     verify_unit_comparator_after = store.GetSlugOrThrow(verify_unit_comparator.address_id);
     Assert(verify_unit_comparator_after.status == core::ChecklistStatus::kPass,
            "Comparator equality should assume result units from the spec when omitted");
-    Assert(verify_unit_comparator_after.result == "2.5 mbar",
+    Assert(verify_unit_comparator_after.result == "2.5 bar",
            "Unitless comparator result should be stored using the spec unit");
 
     auto verify_unit_scalar =
         MakeSlug(checklist, "VerifyUnitScalar", instance_principal, user_principal);
-    verify_unit_scalar.spec = "2.5 mbar";
+    verify_unit_scalar.spec = "2.5 bar";
     verify_unit_scalar.slug_id = core::ComputeSlugId(
         verify_unit_scalar.checklist, verify_unit_scalar.section, verify_unit_scalar.procedure,
         verify_unit_scalar.action, verify_unit_scalar.spec, verify_unit_scalar.instructions);
@@ -414,17 +414,17 @@ int main() {
     store.UpsertSlug(verify_unit_scalar);
     record_relationship(verify_unit_scalar.address_id, "BoolVerifyValidatedStatus",
                         verify_unit_scalar.address_id);
-    ApplyResultUpdate(store, verify_unit_scalar.address_id, "0.0362594 psi", user_principal);
+    ApplyResultUpdate(store, verify_unit_scalar.address_id, "36.2594 psi", user_principal);
     auto verify_unit_scalar_after = store.GetSlugOrThrow(verify_unit_scalar.address_id);
     Assert(verify_unit_scalar_after.status == core::ChecklistStatus::kPass,
            "Scalar equality should allow conversion-scale tolerance from spec precision");
-    ApplyResultUpdate(store, verify_unit_scalar.address_id, "0.034 psi", user_principal);
+    ApplyResultUpdate(store, verify_unit_scalar.address_id, "34 psi", user_principal);
     Assert(store.GetSlugOrThrow(verify_unit_scalar.address_id).status == core::ChecklistStatus::kFail,
            "Scalar equality should fail outside precision tolerance");
 
     auto verify_bracket_hyphen =
         MakeSlug(checklist, "VerifyBracketHyphen", instance_principal, user_principal);
-    verify_bracket_hyphen.spec = "[2.5 - 3.5] bar";
+    verify_bracket_hyphen.spec = "[2.5 - 3.5] m";
     verify_bracket_hyphen.slug_id = core::ComputeSlugId(
         verify_bracket_hyphen.checklist, verify_bracket_hyphen.section,
         verify_bracket_hyphen.procedure, verify_bracket_hyphen.action,
@@ -434,7 +434,7 @@ int main() {
     store.UpsertSlug(verify_bracket_hyphen);
     record_relationship(verify_bracket_hyphen.address_id, "BoolVerifyValidatedStatus",
                         verify_bracket_hyphen.address_id);
-    ApplyResultUpdate(store, verify_bracket_hyphen.address_id, "2600 mbar", user_principal);
+    ApplyResultUpdate(store, verify_bracket_hyphen.address_id, "260 cm", user_principal);
     auto verify_bracket_after = store.GetSlugOrThrow(verify_bracket_hyphen.address_id);
     Assert(verify_bracket_after.status == core::ChecklistStatus::kPass,
            "Bracket range hyphen compatibility form should parse with trailing unit");
@@ -442,9 +442,9 @@ int main() {
     verify_bracket_after = store.GetSlugOrThrow(verify_bracket_hyphen.address_id);
     Assert(verify_bracket_after.status == core::ChecklistStatus::kPass,
            "Bracket range should assume result units from spec trailing unit when omitted");
-    Assert(verify_bracket_after.result == "3 bar",
+    Assert(verify_bracket_after.result == "3 m",
            "Unitless bracket-range result should be stored in the spec unit");
-    ApplyResultUpdate(store, verify_bracket_hyphen.address_id, "2.4 bar", user_principal);
+    ApplyResultUpdate(store, verify_bracket_hyphen.address_id, "2.4 m", user_principal);
     Assert(store.GetSlugOrThrow(verify_bracket_hyphen.address_id).status == core::ChecklistStatus::kFail,
            "Bracket range hyphen compatibility form should fail outside bounds");
 

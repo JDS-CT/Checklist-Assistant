@@ -117,7 +117,7 @@ Core authoring rules:
 - A deterministic quantitative `Spec` must be the parseable expression itself,
   with its unit: for example `= 24 V`, `<= 5 s`, `10 mm..12 mm`, or
   `[1 V,2 V]`. Do not decorate that expression with prose such as
-  `Resolution <= 5 s at 1 kV`; the verifier no longer sees a comparator or
+  `Maximum wait <= 5 s after start`; the verifier no longer sees a comparator or
   interval at the start of the field and falls back to text comparison. Put the
   operating condition in `Instructions` instead. See Specification Sections
   3.1, 4.3.4--4.3.5, 5.5, and 9.5.4.
