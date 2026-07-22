@@ -948,9 +948,13 @@ constexpr std::array<ScalarUnitScale, 46> kScalarUnitScales = {{
     {"mC/cm", "C/cm", ScalarUnitDimension::kChargePerArea, 0.001, true},
 }};
 
-constexpr std::array<ScalarUnitScale, 16> kScalarUnitScalesCaseInsensitive = {{
+constexpr std::array<ScalarUnitScale, 20> kScalarUnitScalesCaseInsensitive = {{
     {"pct", "%", ScalarUnitDimension::kPercent, 1.0, false},
     {"%", "%", ScalarUnitDimension::kPercent, 1.0, false},
+    {"amp", "A", ScalarUnitDimension::kCurrent, 1.0, false},
+    {"amps", "A", ScalarUnitDimension::kCurrent, 1.0, false},
+    {"ampere", "A", ScalarUnitDimension::kCurrent, 1.0, false},
+    {"amperes", "A", ScalarUnitDimension::kCurrent, 1.0, false},
     {"bar", "Pa", ScalarUnitDimension::kPressure, 100000.0, false},
     {"mbar", "Pa", ScalarUnitDimension::kPressure, 100.0, false},
     {"psi", "Pa", ScalarUnitDimension::kPressure, 6894.757293168, false},

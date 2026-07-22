@@ -478,6 +478,27 @@ int main() {
     Assert(store.GetSlugOrThrow(verify_flow_gph.address_id).status == core::ChecklistStatus::kPass,
            "Flow aliases should accept gph as gallons per hour");
 
+    auto verify_current_amp_alias =
+        MakeSlug(checklist, "VerifyCurrentAmpAlias", instance_principal, user_principal);
+    verify_current_amp_alias.spec = "<=2.6 Amp";
+    verify_current_amp_alias.slug_id = core::ComputeSlugId(
+        verify_current_amp_alias.checklist, verify_current_amp_alias.section,
+        verify_current_amp_alias.procedure, verify_current_amp_alias.action,
+        verify_current_amp_alias.spec, verify_current_amp_alias.instructions);
+    verify_current_amp_alias.address_id = core::ComposeAddressId(
+        verify_current_amp_alias.slug_id, verify_current_amp_alias.instance_id);
+    store.UpsertSlug(verify_current_amp_alias);
+    record_relationship(verify_current_amp_alias.address_id, "BoolVerifyValidatedStatus",
+                        verify_current_amp_alias.address_id);
+    ApplyResultUpdate(store, verify_current_amp_alias.address_id, "2.32 A", user_principal);
+    Assert(store.GetSlugOrThrow(verify_current_amp_alias.address_id).status ==
+               core::ChecklistStatus::kPass,
+           "Current-unit aliases should treat Amp and A as equivalent");
+    ApplyResultUpdate(store, verify_current_amp_alias.address_id, "2.7 amperes", user_principal);
+    Assert(store.GetSlugOrThrow(verify_current_amp_alias.address_id).status ==
+               core::ChecklistStatus::kFail,
+           "Current-unit aliases should still evaluate the numeric comparator");
+
     auto verify_comment_source =
         MakeSlug(checklist, "VerifyCommentSource", instance_principal, user_principal);
     verify_comment_source.spec = "=1";
